@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Stream Text Editor</title>
+    <style>
+        body {
+            font-family: Georgia, serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #fafafa;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .toolbar {
+            background: #f8f9fa;
+            padding: 10px 20px;
+            border-bottom: 1px solid #e9ecef;
+            font-size: 12px;
+            color: #666;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .stream-indicator {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .stream-count {
+            padding: 2px 6px;
+            background: #3498db;
+            color: white;
+            border-radius: 3px;
+            font-size: 11px;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 5px;
+        }
+        
+        .btn {
+            padding: 4px 8px;
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            font-size: 11px;
+            cursor: pointer;
+            color: #666;
+        }
+        
+        .btn:hover {
+            background: #f0f0f0;
+        }
+        
+        .editor-area {
+            min-height: 500px;
+            padding: 0;
+        }
+        
+        .stream-chunk {
+            position: relative;
+            border-bottom: 1px solid #f0f0f0;
+            margin-bottom: 15px;
+        }
+        
+        .stream-chunk::before {
+            content: attr(data-chunk-number);
+            position: absolute;
+            right: 10px;
+            top: 5px;
+            font-size: 10px;
+            color: #ccc;
+            background: white;
+            padding: 2px 4px;
+            border-radius: 2px;
+            opacity: 0;
+            transition: opacity 0.2s;
+            z-index: 10;
+        }
+        
+        .stream-chunk:hover::before {
+            opacity: 1;
+        }
+        
+        .stream {
+            min-height: 30px;
+            padding: 10px 15px;
+            border: none;
+            outline: none;
+            font-family: Georgia, serif;
+            font-size: 16px;
+            line-height: 1.6;
+            resize: none;
+            background: transparent;
+            overflow: hidden;
+            white-space: nowrap;
+            width: 100%;
+        }
+        
+        .stream:focus {
+            background: rgba(52, 152, 219, 0.02);
+        }
+        
+        .stream:empty::before {
+            content: attr(data-placeholder);
+            color: #999;
+            font-style: italic;
+        }
+        
+        .stream-0 { 
+            color: #8B4513; 
+            font-style: italic;
+            border-left: 3px solid rgba(139, 69, 19, 0.3);
+        }
+        .stream-1 { 
+            color: #2c3e50;
+            border-left: 3px solid rgba(44, 62, 80, 0.3);
+        }
+        .stream-2 { 
+            color: #4682B4; 
+            font-style: italic;
+            border-left: 3px solid rgba(70, 130, 180, 0.3);
+        }
+        
+        .footer {
+            padding: 10px 20px;
+            background: #f8f9fa;
+            border-top: 1px solid #e9ecef;
+            font-size: 11px;
+            color: #999;
+        }
+        
+        /* Hidden measuring element */
+        .text-measure {
+            position: absolute;
+            left: -9999px;
+            top: -9999px;
+            font-family: Georgia, serif;
+            font-size: 16px;
+            line-height: 1.6;
+            white-space: nowrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="toolbar">
+            <div class="stream-indicator">
+                <span class="stream-count" id="streamCount">3</span>
+                <span>streams</span>
+                <span>•</span>
+                <span id="chunkCount">1</span>
+                <span>chunks</span>
+            </div>
+            <div class="controls">
+                <button class="btn" onclick="changeStreamCount()">Streams</button>
+                <button class="btn" onclick="saveFile()">Save</button>
+                <button class="btn" onclick="loadFile()">Load</button>
+                <button class="btn" onclick="exportHtml()">Export HTML</button>
+                <button class="btn" onclick="exportLatex()">Export LaTeX</button>
+                <button class="btn" onclick="clearAll()">Clear</button>
+            </div>
+        </div>
+        
+        <div class="editor-area" id="editorArea">
+            <!-- Chunks will be added here -->
+        </div>
+        
+        <div class="footer">
+            Type naturally • Real-time text reflow • Tab to switch streams • Save/Load your work
+        </div>
+        
+        <!-- Hidden element for text measurement -->
+        <div class="text-measure" id="textMeasure"></div>
+    </div>
+
+    <script>
+        // Document model - stores the actual text
+        class MultiStreamDocument {
+            constructor(streamCount = 3) {
+                this.streams = new Array(streamCount).fill('');
+                this.streamCount = streamCount;
+                this.activeStream = 0;
+                this.activeCursor = 0;
+                this.listeners = [];
+            }
+            
+            setStreamText(streamIndex, text, cursorPos = 0) {
+                this.streams[streamIndex] = text;
+                this.activeStream = streamIndex;
+                this.activeCursor = cursorPos;
+                this.notifyChange();
+            }
+            
+            insertText(streamIndex, position, text) {
+                const stream = this.streams[streamIndex];
+                this.streams[streamIndex] = stream.slice(0, position) + text + stream.slice(position);
+                this.activeStream = streamIndex;
+                this.activeCursor = position + text.length;
+                this.notifyChange();
+            }
+            
+            deleteText(streamIndex, start, end) {
+                const stream = this.streams[streamIndex];
+                this.streams[streamIndex] = stream.slice(0, start) + stream.slice(end);
+                this.activeStream = streamIndex;
+                this.activeCursor = start;
+                this.notifyChange();
+            }
+            
+            onChange(callback) {
+                this.listeners.push(callback);
+            }
+            
+            notifyChange() {
+                this.listeners.forEach(callback => callback());
+            }
+        }
+        
+        // View model - handles rendering and interaction
+        class MultiStreamView {
+            constructor(container, document) {
+                this.container = container;
+                this.document = document;
+                this.chunks = [];
+                this.maxLineWidth = 0;
+                this.isUpdating = false;
+                
+                this.calculateMaxWidth();
+                this.document.onChange(() => this.render());
+                
+                window.addEventListener('resize', () => {
+                    this.calculateMaxWidth();
+                    this.render();
+                });
+            }
+            
+            calculateMaxWidth() {
+                this.maxLineWidth = this.container.clientWidth - 40; // Account for padding
+            }
+            
+            measureTextWidth(text) {
+                const measure = document.getElementById('textMeasure');
+                measure.textContent = text;
+                return measure.offsetWidth;
+            }
+            
+            breakTextIntoLines(text) {
+                if (!text) return [''];
+                
+                const lines = [];
+                let currentLine = '';
+                let i = 0;
+                
+                while (i < text.length) {
+                    const char = text[i];
+                    const testLine = currentLine + char;
+                    const width = this.measureTextWidth(testLine);
+                    
+                    if (width <= this.maxLineWidth) {
+                        currentLine = testLine;
+                        i++;
+                    } else {
+                        // Line is too long, need to break
+                        if (currentLine === '') {
+                            // Single character is too wide, force it anyway
+                            currentLine = char;
+                            i++;
+                        } else {
+                            // Try to break at a good point
+                            let breakPoint = currentLine.length;
+                            
+                            // Look backwards for a good break point (space or punctuation)
+                            for (let j = currentLine.length - 1; j >= Math.max(0, currentLine.length - 20); j--) {
+                                const c = currentLine[j];
+                                if (c === ' ' || c === '\t' || c === '-' || c === '.' || c === ',') {
+                                    breakPoint = j + 1;
+                                    break;
+                                }
+                            }
+                            
+                            // If we found a good break point, use it
+                            if (breakPoint < currentLine.length) {
+                                lines.push(currentLine.substring(0, breakPoint));
+                                currentLine = currentLine.substring(breakPoint);
+                            } else {
+                                // No good break point found, break at current position
+                                lines.push(currentLine);
+                                currentLine = '';
+                            }
+                        }
+                    }
+                }
+                
+                if (currentLine || lines.length === 0) {
+                    lines.push(currentLine);
+                }
+                
+                return lines;
+            }
+            
+            findCursorPosition(streamIndex, absolutePosition) {
+                const lines = this.breakTextIntoLines(this.document.streams[streamIndex]);
+                let currentPos = 0;
+                
+                for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+                    const lineLength = lines[lineIndex].length;
+                    if (absolutePosition <= currentPos + lineLength) {
+                        return {
+                            chunkIndex: lineIndex,
+                            localPosition: absolutePosition - currentPos
+                        };
+                    }
+                    currentPos += lineLength;
+                }
+                
+                return {
+                    chunkIndex: lines.length - 1,
+                    localPosition: lines[lines.length - 1]?.length || 0
+                };
+            }
+            
+            render() {
+                if (this.isUpdating) return;
+                this.isUpdating = true;
+                
+                const activeStream = this.document.activeStream;
+                const activeCursor = this.document.activeCursor;
+                
+                // Break all streams into lines
+                const streamLines = this.document.streams.map(stream => this.breakTextIntoLines(stream));
+                const maxChunks = Math.max(...streamLines.map(lines => lines.length));
+                
+                // Clear and rebuild
+                this.container.innerHTML = '';
+                
+                for (let chunkIndex = 0; chunkIndex < maxChunks; chunkIndex++) {
+                    const chunk = this.createChunk(chunkIndex + 1);
+                    
+                    for (let streamIndex = 0; streamIndex < this.document.streamCount; streamIndex++) {
+                        const stream = this.createStream(streamIndex, chunkIndex, streamLines[streamIndex][chunkIndex] || '');
+                        chunk.appendChild(stream);
+                    }
+                    
+                    this.container.appendChild(chunk);
+                }
+                
+                // Restore cursor position
+                if (activeStream !== null && activeCursor !== null) {
+                    const cursorPos = this.findCursorPosition(activeStream, activeCursor);
+                    const targetElement = this.container.querySelector(
+                        `[data-stream-index="${activeStream}"][data-chunk-index="${cursorPos.chunkIndex}"]`
+                    );
+                    
+                    if (targetElement) {
+                        targetElement.focus();
+                        this.setCursor(targetElement, cursorPos.localPosition);
+                    }
+                }
+                
+                document.getElementById('chunkCount').textContent = maxChunks;
+                this.isUpdating = false;
+            }
+            
+            createChunk(number) {
+                const chunk = document.createElement('div');
+                chunk.className = 'stream-chunk';
+                chunk.dataset.chunkNumber = number;
+                return chunk;
+            }
+            
+            createStream(streamIndex, chunkIndex, text) {
+                const stream = document.createElement('div');
+                stream.className = `stream stream-${streamIndex}`;
+                stream.contentEditable = true;
+                stream.dataset.streamIndex = streamIndex;
+                stream.dataset.chunkIndex = chunkIndex;
+                stream.textContent = text;
+                
+                if (streamIndex === 0 && chunkIndex === 0 && !text) {
+                    stream.dataset.placeholder = 'Start writing your multi-stream story...';
+                }
+                
+                stream.addEventListener('input', (e) => this.handleInput(e, streamIndex));
+                stream.addEventListener('keydown', (e) => this.handleKeyDown(e, streamIndex, chunkIndex));
+                
+                return stream;
+            }
+            
+            handleInput(event, streamIndex) {
+                if (this.isUpdating) return;
+                
+                const element = event.target;
+                const cursorPos = this.getCursorPosition(element);
+                const chunkIndex = parseInt(element.dataset.chunkIndex);
+                
+                // Reconstruct the full text for this stream
+                const chunks = Array.from(this.container.querySelectorAll(`[data-stream-index="${streamIndex}"]`));
+                let absolutePosition = 0;
+                
+                // Calculate absolute cursor position
+                for (let i = 0; i < chunkIndex; i++) {
+                    if (chunks[i]) {
+                        absolutePosition += chunks[i].textContent.length;
+                    }
+                }
+                absolutePosition += cursorPos;
+                
+                // Get full text
+                const fullText = chunks.map(chunk => chunk.textContent).join('');
+                
+                // Update document
+                this.document.setStreamText(streamIndex, fullText, absolutePosition);
+            }
+            
+            handleKeyDown(event, streamIndex, chunkIndex) {
+                if (event.key === 'Tab') {
+                    event.preventDefault();
+                    const nextStreamIndex = (streamIndex + 1) % this.document.streamCount;
+                    const nextElement = this.container.querySelector(
+                        `[data-stream-index="${nextStreamIndex}"][data-chunk-index="${chunkIndex}"]`
+                    );
+                    if (nextElement) {
+                        nextElement.focus();
+                    }
+                }
+            }
+            
+            getCursorPosition(element) {
+                const selection = window.getSelection();
+                if (selection.rangeCount === 0) return 0;
+                const range = selection.getRangeAt(0);
+                return range.startOffset;
+            }
+            
+            setCursor(element, position) {
+                const range = document.createRange();
+                const selection = window.getSelection();
+                
+                if (element.firstChild) {
+                    range.setStart(element.firstChild, Math.min(position, element.firstChild.textContent.length));
+                } else {
+                    range.setStart(element, 0);
+                }
+                
+                range.collapse(true);
+                selection.removeAllRanges();
+                selection.addRange(range);
+            }
+        }
+        
+        // Initialize the editor
+        const doc = new MultiStreamDocument(3);
+        const view = new MultiStreamView(document.getElementById('editorArea'), doc);
+        
+        // Global functions for UI
+        function changeStreamCount() {
+            const newCount = parseInt(prompt(`How many streams? (current: ${doc.streamCount})`, doc.streamCount));
+            if (newCount && newCount > 0 && newCount <= 10) {
+                const oldStreams = doc.streams.slice();
+                doc.streamCount = newCount;
+                doc.streams = new Array(newCount).fill('');
+                
+                // Copy over existing streams
+                for (let i = 0; i < Math.min(oldStreams.length, newCount); i++) {
+                    doc.streams[i] = oldStreams[i];
+                }
+                
+                document.getElementById('streamCount').textContent = newCount;
+                view.render();
+            }
+        }
+        
+        function saveFile() {
+            const now = new Date().toISOString().split('T')[0];
+            const title = prompt('Story title:', 'Untitled Story') || 'Untitled Story';
+            
+            // Create the file content
+            let content = `---
+streams: ${doc.streamCount}
+title: "${title}"
+created: "${now}"
+version: "1.0"
+---
+
+`;
+            
+            // Find all chunks by breaking streams into lines
+            const streamLines = doc.streams.map(stream => view.breakTextIntoLines(stream));
+            const maxChunks = Math.max(...streamLines.map(lines => lines.length));
+            
+            for (let chunkIndex = 0; chunkIndex < maxChunks; chunkIndex++) {
+                content += `=== Chunk ${chunkIndex + 1} ===\n`;
+                for (let streamIndex = 0; streamIndex < doc.streamCount; streamIndex++) {
+                    const line = streamLines[streamIndex][chunkIndex] || '';
+                    if (line.trim()) {
+                        content += `Stream ${streamIndex + 1}: ${line}\n`;
+                    }
+                }
+                content += '\n';
+            }
+            
+            // Download the file
+            const blob = new Blob([content], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${title.replace(/[^a-z0-9]/gi, '_')}.txt`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+        
+        function loadFile() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.txt';
+            
+            input.onchange = function(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        parseAndLoadFile(e.target.result);
+                    } catch (error) {
+                        alert('Error loading file: ' + error.message);
+                    }
+                };
+                reader.readAsText(file);
+            };
+            
+            input.click();
+        }
+        
+        function parseAndLoadFile(content) {
+            const lines = content.split('\n');
+            let inMetadata = false;
+            let inContent = false;
+            let metadata = {};
+            let currentChunk = null;
+            let chunks = [];
+            
+            for (const line of lines) {
+                const trimmed = line.trim();
+                
+                if (trimmed === '---') {
+                    if (!inMetadata) {
+                        inMetadata = true;
+                    } else {
+                        inMetadata = false;
+                        inContent = true;
+                    }
+                    continue;
+                }
+                
+                if (inMetadata) {
+                    const [key, ...valueParts] = trimmed.split(':');
+                    if (key && valueParts.length > 0) {
+                        const value = valueParts.join(':').trim().replace(/"/g, '');
+                        metadata[key.trim()] = value;
+                    }
+                }
+                
+                if (inContent) {
+                    if (trimmed.startsWith('=== Chunk')) {
+                        if (currentChunk) chunks.push(currentChunk);
+                        currentChunk = {};
+                    } else if (trimmed.startsWith('Stream ')) {
+                        const match = trimmed.match(/^Stream (\d+): (.*)$/);
+                        if (match && currentChunk) {
+                            const streamIndex = parseInt(match[1]) - 1;
+                            currentChunk[streamIndex] = match[2];
+                        }
+                    }
+                }
+            }
+            
+            if (currentChunk) chunks.push(currentChunk);
+            
+            // Reconstruct streams
+            const streamCount = parseInt(metadata.streams) || 3;
+            const newStreams = new Array(streamCount).fill('');
+            
+            for (let streamIndex = 0; streamIndex < streamCount; streamIndex++) {
+                const streamParts = chunks
+                    .map(chunk => chunk[streamIndex] || '')
+                    .filter((part, index, arr) => {
+                        // Remove empty parts at the end
+                        const lastNonEmpty = arr.map((p, i) => p ? i : -1).filter(i => i >= 0).pop();
+                        return index <= lastNonEmpty || part;
+                    });
+                newStreams[streamIndex] = streamParts.join('');
+            }
+            
+            // Update document
+            doc.streamCount = streamCount;
+            doc.streams = newStreams;
+            doc.activeStream = 0;
+            doc.activeCursor = 0;
+            
+            document.getElementById('streamCount').textContent = streamCount;
+            doc.notifyChange();
+            
+            alert(`Loaded "${metadata.title || 'Untitled'}" with ${streamCount} streams`);
+        }
+        
+        function exportHtml() {
+            const title = prompt('Story title for export:', 'Multi-Voice Story') || 'Multi-Voice Story';
+            
+            // Generate HTML similar to our display format
+            let html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${title}</title>
+    <style>
+        body { font-family: Georgia, serif; max-width: 800px; margin: 0 auto; padding: 20px; line-height: 1.6; }
+        h1 { text-align: center; color: #2c3e50; }
+        .stream-chunk { margin-bottom: 30px; border-bottom: 1px solid #eee; padding-bottom: 20px; }
+        .stream { padding: 10px 15px; margin-bottom: 5px; }
+        .stream-0 { color: #8B4513; font-style: italic; border-left: 3px solid rgba(139, 69, 19, 0.3); }
+        .stream-1 { color: #2c3e50; border-left: 3px solid rgba(44, 62, 80, 0.3); }
+        .stream-2 { color: #4682B4; font-style: italic; border-left: 3px solid rgba(70, 130, 180, 0.3); }
+    </style>
+</head>
+<body>
+    <h1>${title}</h1>
+`;
+            
+            const streamLines = doc.streams.map(stream => view.breakTextIntoLines(stream));
+            const maxChunks = Math.max(...streamLines.map(lines => lines.length));
+            
+            for (let chunkIndex = 0; chunkIndex < maxChunks; chunkIndex++) {
+                html += '    <div class="stream-chunk">\n';
+                for (let streamIndex = 0; streamIndex < doc.streamCount; streamIndex++) {
+                    const line = streamLines[streamIndex][chunkIndex] || '';
+                    if (line.trim()) {
+                        html += `        <div class="stream stream-${streamIndex}">${line}</div>\n`;
+                    }
+                }
+                html += '    </div>\n';
+            }
+            
+            html += `</body>
+</html>`;
+            
+            const blob = new Blob([html], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${title.replace(/[^a-z0-9]/gi, '_')}.html`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+        
+        function exportLatex() {
+            const title = prompt('Story title for LaTeX export:', 'Multi-Voice Story') || 'Multi-Voice Story';
+            
+            let latex = `\\documentclass[11pt]{article}
+\\usepackage[margin=1in]{geometry}
+\\usepackage{paracol}
+\\usepackage{xcolor}
+
+\\title{${title}}
+\\author{Your Name}
+\\date{}
+
+% Define colors for each voice
+\\definecolor{voice1color}{RGB}{139,69,19}
+\\definecolor{voice2color}{RGB}{44,62,80}
+\\definecolor{voice3color}{RGB}{70,130,180}
+
+% Commands for each voice
+\\newcommand{\\voiceone}[1]{\\textcolor{voice1color}{\\textit{#1}}}
+\\newcommand{\\voicetwo}[1]{\\textcolor{voice2color}{#1}}
+\\newcommand{\\voicethree}[1]{\\textcolor{voice3color}{\\textit{#1}}}
+
+\\begin{document}
+\\maketitle
+
+\\begin{paracol}{${doc.streamCount}}
+
+`;
+            
+            const streamLines = doc.streams.map(stream => view.breakTextIntoLines(stream));
+            const maxChunks = Math.max(...streamLines.map(lines => lines.length));
+            
+            for (let chunkIndex = 0; chunkIndex < maxChunks; chunkIndex++) {
+                for (let streamIndex = 0; streamIndex < doc.streamCount; streamIndex++) {
+                    const line = streamLines[streamIndex][chunkIndex] || '';
+                    const command = ['\\voiceone', '\\voicetwo', '\\voicethree'][streamIndex] || '\\voicetwo';
+                    
+                    if (line.trim()) {
+                        latex += `${command}{${line.replace(/&/g, '\\&').replace(/#/g, '\\#')}}\n`;
+                    }
+                    
+                    if (streamIndex < doc.streamCount - 1) {
+                        latex += '\\switchcolumn\n';
+                    }
+                }
+                
+                if (chunkIndex < maxChunks - 1) {
+                    latex += '\n\\switchcolumn*\n\n';
+                }
+            }
+            
+            latex += `
+
+\\end{paracol}
+\\end{document}`;
+            
+            const blob = new Blob([latex], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${title.replace(/[^a-z0-9]/gi, '_')}.tex`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+        
+        function clearAll() {
+            if (confirm('Clear all content? This cannot be undone.')) {
+                doc.streams = new Array(doc.streamCount).fill('');
+                doc.activeStream = 0;
+                doc.activeCursor = 0;
+                doc.notifyChange();
+            }
+        }
+        
+        // Initialize
+        document.getElementById('streamCount').textContent = doc.streamCount;
+        view.render();
+    </script>
+</body>
+</html>
