@@ -323,9 +323,44 @@
                     const currentGroup = this.streamGroups[groupIndex];
                     const nextGroup = this.streamGroups[groupIndex + 1];
                     
-                    // Concatenate each stream
+                    // First, calculate how many chunks the current group spans
+                    const currentGroupLines = currentGroup.map(stream => this.breakTextIntoLines(stream));
+                    const currentGroupMaxChunks = Math.max(...currentGroupLines.map(lines => lines.length));
+                    
+                    // For each stream, pad to align with the chunk boundary
                     for (let streamIndex = 0; streamIndex < this.streamCount; streamIndex++) {
-                        currentGroup[streamIndex] += nextGroup[streamIndex];
+                        const currentText = currentGroup[streamIndex];
+                        const nextText = nextGroup[streamIndex];
+                        
+                        if (nextText.trim() === '') {
+                            // Next group has no content for this stream, just keep current
+                            continue;
+                        }
+                        
+                        // Calculate how many chunks this stream currently fills
+                        const currentLines = this.breakTextIntoLines(currentText);
+                        const currentChunks = currentLines.length;
+                        
+                        // Calculate how much whitespace we need to add to reach the start of the next paragraph
+                        let paddingNeeded = '';
+                        
+                        // If this stream ends before the maximum chunk count, we need to fill the gap
+                        const chunksToFill = currentGroupMaxChunks - currentChunks;
+                        
+                        if (chunksToFill > 0) {
+                            // Add spaces to fill complete empty chunks
+                            // Each chunk gets filled with a single space (minimal padding)
+                            paddingNeeded = ' '.repeat(chunksToFill);
+                        }
+                        
+                        // If the last line of current text isn't empty, add a space separator
+                        const lastLine = currentLines[currentLines.length - 1] || '';
+                        if (lastLine.trim().length > 0) {
+                            paddingNeeded += ' ';
+                        }
+                        
+                        // Combine: current text + padding + next text
+                        currentGroup[streamIndex] = currentText + paddingNeeded + nextText;
                     }
                     
                     // Remove the next group
