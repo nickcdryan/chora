@@ -65,10 +65,40 @@
             background: #f0f0f0;
         }
         
+        .title-area {
+            padding: 40px 100px 20px 100px;
+        }
+        
+        .title-input {
+            width: 100%;
+            border: none;
+            outline: none;
+            font-family: Georgia, serif;
+            font-size: 28px;
+            font-weight: bold;
+            text-align: center;
+            background: transparent;
+            color: #2c3e50;
+            padding: 20px 0;
+            resize: none;
+            overflow: hidden;
+        }
+        
+        .title-input:focus {
+            background: rgba(52, 152, 219, 0.02);
+        }
+        
+        .title-input:empty::before {
+            content: attr(data-placeholder);
+            color: #bdc3c7;
+            font-style: italic;
+            font-weight: normal;
+        }
+        
         .editor-area {
             min-height: 500px;
             padding: 0;
-            margin: 140px 100px 100px 100px;
+            margin: 40px 100px 100px 100px;
         }
         
         .paragraph-group {
@@ -150,10 +180,11 @@
         .stream {
             min-height: 30px;
             padding: 0px 0px 0px 15px;
+            margin-bottom: -2px;
             border: none;
             outline: none;
             font-family: Georgia, serif;
-            font-size: 16px;
+            font-size: 16px; 
             line-height: 1.6;
             resize: none;
             background: transparent;
@@ -239,6 +270,14 @@
             </div>
         </div>
         
+        <div class="title-area">
+            <div class="title-input" 
+                 contenteditable="true" 
+                 data-placeholder="Enter your story title..."
+                 id="titleInput">
+            </div>
+        </div>
+        
         <div class="editor-area" id="editorArea">
             <!-- Chunks will be added here -->
         </div>
@@ -261,6 +300,7 @@
                 this.activeStream = 0;
                 this.activeCursor = 0;
                 this.activeGroup = 0;
+                this.title = '';
                 this.listeners = [];
             }
             
@@ -387,6 +427,12 @@
                     return window.view.breakTextIntoLines(text);
                 }
                 return text ? [text] : [''];
+            }
+            
+            setTitle(title) {
+                this.title = title;
+                // Don't trigger notifyChange for title updates to avoid re-rendering
+                // Title changes don't affect the stream layout
             }
             
             onChange(callback) {
@@ -714,6 +760,16 @@
         // Track the last focused text element
         let lastFocusedElement = null;
         
+        // Handle title input
+        const titleInput = document.getElementById('titleInput');
+        titleInput.addEventListener('input', function() {
+            doc.setTitle(this.textContent);
+        });
+        
+        titleInput.addEventListener('focus', function() {
+            // Don't set lastFocusedElement for title, keep it for stream elements
+        });
+        
         // Global functions for UI
         function insertParagraphBreak() {
             // Use the last focused element or try to find the current one
@@ -843,7 +899,7 @@
         
         function saveFile() {
             const now = new Date().toISOString().split('T')[0];
-            const title = prompt('Story title:', 'Untitled Story') || 'Untitled Story';
+            const title = doc.title || 'Untitled Story';
             
             // Create the file content
             let content = `---
@@ -995,9 +1051,13 @@ version: "1.0"
             // Update document
             doc.streamCount = streamCount;
             doc.streamGroups = newStreamGroups;
+            doc.title = metadata.title || '';
             doc.activeStream = 0;
             doc.activeCursor = 0;
             doc.activeGroup = 0;
+            
+            // Update title input
+            document.getElementById('titleInput').textContent = doc.title;
             
             document.getElementById('streamCount').textContent = streamCount;
             doc.notifyChange();
@@ -1006,7 +1066,7 @@ version: "1.0"
         }
         
         function exportHtml() {
-            const title = prompt('Story title for export:', 'Multi-Voice Story') || 'Multi-Voice Story';
+            const title = doc.title || 'Multi-Voice Story';
             
             // Generate HTML similar to our display format
             let html = `<!DOCTYPE html>
@@ -1066,7 +1126,7 @@ version: "1.0"
         }
         
         function exportLatex() {
-            const title = prompt('Story title for LaTeX export:', 'Multi-Voice Story') || 'Multi-Voice Story';
+            const title = doc.title || 'Multi-Voice Story';
             
             let latex = `\\documentclass[11pt]{article}
 \\usepackage[margin=1in]{geometry}
@@ -1146,9 +1206,14 @@ version: "1.0"
         function clearAll() {
             if (confirm('Clear all content? This cannot be undone.')) {
                 doc.streamGroups = [new Array(doc.streamCount).fill('')];
+                doc.title = '';
                 doc.activeStream = 0;
                 doc.activeCursor = 0;
                 doc.activeGroup = 0;
+                
+                // Clear title input
+                document.getElementById('titleInput').textContent = '';
+                
                 doc.notifyChange();
             }
         }
