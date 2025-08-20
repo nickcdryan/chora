@@ -9,22 +9,17 @@
             font-family: Georgia, serif;
             margin: 0;
             padding: 20px;
-            background-color: #fafafa;
+            background-color: #f5f5f5;
         }
         
         .container {
             max-width: 900px;
             margin: 0 auto;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-            overflow: hidden;
         }
         
         .toolbar {
-            background: #f8f9fa;
+            background: #f5f5f5;
             padding: 20px 30px;
-            border-bottom: 1px solid #e9ecef;
             font-size: 12px;
             color: #666;
             display: flex;
@@ -106,6 +101,13 @@
         .btn:hover::after {
             opacity: 1;
             visibility: visible;
+        }
+        
+        .content-area {
+            background: white;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            padding-bottom: 100px;
+            margin-bottom: 20px;
         }
         
         .title-area {
@@ -274,8 +276,7 @@
         
         .footer {
             padding: 10px 20px;
-            background: #f8f9fa;
-            border-top: 1px solid #e9ecef;
+            background: #f5f5f5;
             font-size: 11px;
             color: #999;
             display: flex;
@@ -314,16 +315,18 @@
             </div>
         </div>
         
-        <div class="title-area">
-            <div class="title-input" 
-                 contenteditable="true" 
-                 data-placeholder="Enter your story title..."
-                 id="titleInput">
+        <div class="content-area">
+            <div class="title-area">
+                <div class="title-input" 
+                     contenteditable="true" 
+                     data-placeholder="Enter your story title..."
+                     id="titleInput">
+                </div>
             </div>
-        </div>
-        
-        <div class="editor-area" id="editorArea">
-            <!-- Chunks will be added here -->
+            
+            <div class="editor-area" id="editorArea">
+                <!-- Chunks will be added here -->
+            </div>
         </div>
         
         <div class="footer">
