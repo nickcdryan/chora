@@ -306,6 +306,16 @@
         <div class="toolbar">
             <div></div>
             <div class="controls">
+                <button class="btn" id="undoBtn" onclick="undoAction()" data-tooltip="Undo (Cmd+Z)">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                        <path d="M3 7v6M3 7l4-4M3 7l4 4M7 7h8" stroke="#74a9d8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
+                <button class="btn" id="redoBtn" onclick="redoAction()" data-tooltip="Redo (Cmd+Y)">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                        <path d="M13 7v6M13 7l-4-4M13 7l-4 4M9 7H1" stroke="#74a9d8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
                 <button class="btn" onclick="changeStreamCount()" data-tooltip="Change Voices">
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                         <path d="M2 4h12M2 8h12M2 12h12" stroke="#74a9d8" stroke-width="1.5" stroke-linecap="round"/>
@@ -381,10 +391,28 @@
                 this.activeGroup = 0;
                 this.title = '';
                 this.listeners = [];
+                
+                // History system for undo/redo
+                this.history = [];
+                this.historyIndex = -1;
+                this.maxHistory = 50; // Limit history to prevent memory issues
+                this.isUndoRedoing = false; // Flag to prevent history recording during undo/redo
+                this.saveStateTimeout = null; // For debouncing state saves
+                this.saveStateDelay = 500; // Save state after 500ms of inactivity
+                
+                // Save initial state
+                this.saveState();
             }
             
             setStreamText(streamIndex, text, cursorPos = 0, groupIndex = null) {
                 const group = groupIndex !== null ? groupIndex : this.activeGroup;
+                const oldText = this.streamGroups[group][streamIndex];
+                
+                // Only save state if the text actually changed
+                if (oldText !== text && !this.isUndoRedoing) {
+                    this.saveStateDebounced();
+                }
+                
                 this.streamGroups[group][streamIndex] = text;
                 this.activeStream = streamIndex;
                 this.activeCursor = cursorPos;
@@ -395,6 +423,11 @@
             insertText(streamIndex, position, text, groupIndex = null) {
                 const group = groupIndex !== null ? groupIndex : this.activeGroup;
                 const stream = this.streamGroups[group][streamIndex];
+                
+                if (!this.isUndoRedoing) {
+                    this.saveState();
+                }
+                
                 this.streamGroups[group][streamIndex] = stream.slice(0, position) + text + stream.slice(position);
                 this.activeStream = streamIndex;
                 this.activeCursor = position + text.length;
@@ -405,6 +438,11 @@
             deleteText(streamIndex, start, end, groupIndex = null) {
                 const group = groupIndex !== null ? groupIndex : this.activeGroup;
                 const stream = this.streamGroups[group][streamIndex];
+                
+                if (!this.isUndoRedoing) {
+                    this.saveState();
+                }
+                
                 this.streamGroups[group][streamIndex] = stream.slice(0, start) + stream.slice(end);
                 this.activeStream = streamIndex;
                 this.activeCursor = start;
@@ -413,6 +451,10 @@
             }
             
             insertParagraphBreak(chunkIndex) {
+                if (!this.isUndoRedoing) {
+                    this.saveState();
+                }
+                
                 // Find which group the current chunk belongs to and split there
                 let targetGroupIndex = this.activeGroup;
                 
@@ -443,6 +485,10 @@
             }
             
             removeParagraphBreak(groupIndex) {
+                if (!this.isUndoRedoing) {
+                    this.saveState();
+                }
+                
                 // Merge the specified group with the next one
                 if (groupIndex < this.streamGroups.length - 1) {
                     const currentGroup = this.streamGroups[groupIndex];
@@ -509,6 +555,9 @@
             }
             
             setTitle(title) {
+                if (this.title !== title && !this.isUndoRedoing) {
+                    this.saveStateDebounced();
+                }
                 this.title = title;
                 // Don't trigger notifyChange for title updates to avoid re-rendering
                 // Title changes don't affect the stream layout
@@ -520,6 +569,129 @@
             
             notifyChange() {
                 this.listeners.forEach(callback => callback());
+            }
+            
+            // History management methods
+            saveStateDebounced() {
+                // Clear existing timeout
+                if (this.saveStateTimeout) {
+                    clearTimeout(this.saveStateTimeout);
+                }
+                
+                // Set new timeout
+                this.saveStateTimeout = setTimeout(() => {
+                    this.saveState();
+                    this.saveStateTimeout = null;
+                }, this.saveStateDelay);
+            }
+            
+            saveState() {
+                if (this.isUndoRedoing) return; // Don't save state during undo/redo operations
+                
+                const state = {
+                    streamGroups: JSON.parse(JSON.stringify(this.streamGroups)), // Deep copy
+                    streamCount: this.streamCount,
+                    activeStream: this.activeStream,
+                    activeCursor: this.activeCursor,
+                    activeGroup: this.activeGroup,
+                    title: this.title,
+                    timestamp: Date.now()
+                };
+                
+                // Remove any history after current index (when user makes new change after undo)
+                if (this.historyIndex < this.history.length - 1) {
+                    this.history = this.history.slice(0, this.historyIndex + 1);
+                }
+                
+                // Add new state
+                this.history.push(state);
+                this.historyIndex = this.history.length - 1;
+                
+                // Limit history size
+                if (this.history.length > this.maxHistory) {
+                    this.history.shift();
+                    this.historyIndex--;
+                }
+                
+                // Update undo/redo button states
+                this.updateUndoRedoButtons();
+            }
+            
+            undo() {
+                if (!this.canUndo()) return false;
+                
+                // Force save any pending changes
+                if (this.saveStateTimeout) {
+                    clearTimeout(this.saveStateTimeout);
+                    this.saveState();
+                    this.saveStateTimeout = null;
+                }
+                
+                this.isUndoRedoing = true;
+                this.historyIndex--;
+                this.restoreState(this.history[this.historyIndex]);
+                this.isUndoRedoing = false;
+                
+                this.updateUndoRedoButtons();
+                return true;
+            }
+            
+            redo() {
+                if (!this.canRedo()) return false;
+                
+                // Force save any pending changes
+                if (this.saveStateTimeout) {
+                    clearTimeout(this.saveStateTimeout);
+                    this.saveState();
+                    this.saveStateTimeout = null;
+                }
+                
+                this.isUndoRedoing = true;
+                this.historyIndex++;
+                this.restoreState(this.history[this.historyIndex]);
+                this.isUndoRedoing = false;
+                
+                this.updateUndoRedoButtons();
+                return true;
+            }
+            
+            canUndo() {
+                return this.historyIndex > 0;
+            }
+            
+            canRedo() {
+                return this.historyIndex < this.history.length - 1;
+            }
+            
+            restoreState(state) {
+                this.streamGroups = JSON.parse(JSON.stringify(state.streamGroups)); // Deep copy
+                this.streamCount = state.streamCount;
+                this.activeStream = state.activeStream;
+                this.activeCursor = state.activeCursor;
+                this.activeGroup = state.activeGroup;
+                this.title = state.title;
+                
+                // Update UI elements
+                document.getElementById('titleInput').textContent = this.title;
+                document.getElementById('streamCount').textContent = this.streamCount;
+                
+                // Trigger re-render
+                this.notifyChange();
+            }
+            
+            updateUndoRedoButtons() {
+                const undoBtn = document.getElementById('undoBtn');
+                const redoBtn = document.getElementById('redoBtn');
+                
+                if (undoBtn) {
+                    undoBtn.disabled = !this.canUndo();
+                    undoBtn.style.opacity = this.canUndo() ? '1' : '0.5';
+                }
+                
+                if (redoBtn) {
+                    redoBtn.disabled = !this.canRedo();
+                    redoBtn.style.opacity = this.canRedo() ? '1' : '0.5';
+                }
             }
         }
         
@@ -850,6 +1022,14 @@
         });
         
         // Global functions for UI
+        function undoAction() {
+            doc.undo();
+        }
+        
+        function redoAction() {
+            doc.redo();
+        }
+        
         function insertParagraphBreak() {
             // Use the last focused element or try to find the current one
             const focusedElement = lastFocusedElement || document.activeElement;
@@ -1295,6 +1475,22 @@ version: "1.0"
                 doc.notifyChange();
             }
         }
+        
+        // Add global keyboard shortcuts
+        document.addEventListener('keydown', function(event) {
+            // Check for Cmd/Ctrl key combinations
+            const isCtrlOrCmd = event.ctrlKey || event.metaKey;
+            
+            if (isCtrlOrCmd && event.key === 'z' && !event.shiftKey) {
+                // Cmd+Z / Ctrl+Z - Undo
+                event.preventDefault();
+                doc.undo();
+            } else if (isCtrlOrCmd && (event.key === 'y' || (event.key === 'z' && event.shiftKey))) {
+                // Cmd+Y / Ctrl+Y or Cmd+Shift+Z / Ctrl+Shift+Z - Redo
+                event.preventDefault();
+                doc.redo();
+            }
+        });
         
         // Initialize
         document.getElementById('streamCount').textContent = doc.streamCount;
