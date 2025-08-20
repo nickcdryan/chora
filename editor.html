@@ -71,6 +71,52 @@
             margin: 140px 100px 100px 100px;
         }
         
+        .paragraph-group {
+            position: relative;
+        }
+        
+        .paragraph-break-header {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-top: 40px;
+            margin-bottom: 20px;
+            border-top: 2px solid #e9ecef;
+            padding-top: 10px;
+        }
+        
+        .paragraph-break-line {
+            flex: 1;
+            height: 1px;
+            background: #e9ecef;
+        }
+        
+        .paragraph-delete-btn {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 12px;
+            padding: 4px 8px;
+            margin: 0 10px;
+            font-size: 10px;
+            color: #6c757d;
+            cursor: pointer;
+            opacity: 0.7;
+            transition: all 0.2s ease;
+            font-family: monospace;
+        }
+        
+        .paragraph-delete-btn:hover {
+            background: #e9ecef;
+            border-color: #dc3545;
+            color: #dc3545;
+            opacity: 1;
+        }
+        
+        .paragraph-break-header:hover .paragraph-delete-btn {
+            opacity: 1;
+        }
+        
         .stream-chunk {
             position: relative;
             margin-bottom: 45px;
@@ -203,34 +249,103 @@
         // Document model - stores the actual text
         class MultiStreamDocument {
             constructor(streamCount = 3) {
-                this.streams = new Array(streamCount).fill('');
+                // Each paragraph group contains all streams for that section
+                this.streamGroups = [new Array(streamCount).fill('')];
                 this.streamCount = streamCount;
                 this.activeStream = 0;
                 this.activeCursor = 0;
+                this.activeGroup = 0;
                 this.listeners = [];
             }
             
-            setStreamText(streamIndex, text, cursorPos = 0) {
-                this.streams[streamIndex] = text;
+            setStreamText(streamIndex, text, cursorPos = 0, groupIndex = null) {
+                const group = groupIndex !== null ? groupIndex : this.activeGroup;
+                this.streamGroups[group][streamIndex] = text;
                 this.activeStream = streamIndex;
                 this.activeCursor = cursorPos;
+                this.activeGroup = group;
                 this.notifyChange();
             }
             
-            insertText(streamIndex, position, text) {
-                const stream = this.streams[streamIndex];
-                this.streams[streamIndex] = stream.slice(0, position) + text + stream.slice(position);
+            insertText(streamIndex, position, text, groupIndex = null) {
+                const group = groupIndex !== null ? groupIndex : this.activeGroup;
+                const stream = this.streamGroups[group][streamIndex];
+                this.streamGroups[group][streamIndex] = stream.slice(0, position) + text + stream.slice(position);
                 this.activeStream = streamIndex;
                 this.activeCursor = position + text.length;
+                this.activeGroup = group;
                 this.notifyChange();
             }
             
-            deleteText(streamIndex, start, end) {
-                const stream = this.streams[streamIndex];
-                this.streams[streamIndex] = stream.slice(0, start) + stream.slice(end);
+            deleteText(streamIndex, start, end, groupIndex = null) {
+                const group = groupIndex !== null ? groupIndex : this.activeGroup;
+                const stream = this.streamGroups[group][streamIndex];
+                this.streamGroups[group][streamIndex] = stream.slice(0, start) + stream.slice(end);
                 this.activeStream = streamIndex;
                 this.activeCursor = start;
+                this.activeGroup = group;
                 this.notifyChange();
+            }
+            
+            insertParagraphBreak(chunkIndex) {
+                // Find which group the current chunk belongs to and split there
+                let targetGroupIndex = this.activeGroup;
+                
+                // Split each stream in the current group at the end of the specified chunk
+                const currentGroup = this.streamGroups[targetGroupIndex];
+                const newGroup = new Array(this.streamCount).fill('');
+                
+                for (let streamIndex = 0; streamIndex < this.streamCount; streamIndex++) {
+                    const stream = currentGroup[streamIndex];
+                    const lines = this.breakTextIntoLines(stream);
+                    
+                    if (chunkIndex < lines.length) {
+                        // Split at the end of the chunk
+                        const beforeText = lines.slice(0, chunkIndex + 1).join('');
+                        const afterText = lines.slice(chunkIndex + 1).join('');
+                        
+                        currentGroup[streamIndex] = beforeText;
+                        newGroup[streamIndex] = afterText;
+                    } else {
+                        // Chunk doesn't exist in this stream, leave current group unchanged
+                        newGroup[streamIndex] = '';
+                    }
+                }
+                
+                // Insert the new group after the current one
+                this.streamGroups.splice(targetGroupIndex + 1, 0, newGroup);
+                this.notifyChange();
+            }
+            
+            removeParagraphBreak(groupIndex) {
+                // Merge the specified group with the next one
+                if (groupIndex < this.streamGroups.length - 1) {
+                    const currentGroup = this.streamGroups[groupIndex];
+                    const nextGroup = this.streamGroups[groupIndex + 1];
+                    
+                    // Concatenate each stream
+                    for (let streamIndex = 0; streamIndex < this.streamCount; streamIndex++) {
+                        currentGroup[streamIndex] += nextGroup[streamIndex];
+                    }
+                    
+                    // Remove the next group
+                    this.streamGroups.splice(groupIndex + 1, 1);
+                    
+                    // Adjust activeGroup if necessary
+                    if (this.activeGroup > groupIndex) {
+                        this.activeGroup--;
+                    }
+                    
+                    this.notifyChange();
+                }
+            }
+            
+            breakTextIntoLines(text) {
+                // Use the view's method if available, otherwise return simple split
+                if (window.view && window.view.breakTextIntoLines) {
+                    return window.view.breakTextIntoLines(text);
+                }
+                return text ? [text] : [''];
             }
             
             onChange(callback) {
@@ -324,8 +439,9 @@
                 return lines;
             }
             
-            findCursorPosition(streamIndex, absolutePosition) {
-                const lines = this.breakTextIntoLines(this.document.streams[streamIndex]);
+            findCursorPosition(streamIndex, absolutePosition, groupIndex) {
+                const stream = this.document.streamGroups[groupIndex][streamIndex];
+                const lines = this.breakTextIntoLines(stream);
                 let currentPos = 0;
                 
                 for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
@@ -333,7 +449,8 @@
                     if (absolutePosition <= currentPos + lineLength) {
                         return {
                             chunkIndex: lineIndex,
-                            localPosition: absolutePosition - currentPos
+                            localPosition: absolutePosition - currentPos,
+                            groupIndex: groupIndex
                         };
                     }
                     currentPos += lineLength;
@@ -341,7 +458,8 @@
                 
                 return {
                     chunkIndex: lines.length - 1,
-                    localPosition: lines[lines.length - 1]?.length || 0
+                    localPosition: lines[lines.length - 1]?.length || 0,
+                    groupIndex: groupIndex
                 };
             }
             
@@ -351,30 +469,49 @@
                 
                 const activeStream = this.document.activeStream;
                 const activeCursor = this.document.activeCursor;
-                
-                // Break all streams into lines
-                const streamLines = this.document.streams.map(stream => this.breakTextIntoLines(stream));
-                const maxChunks = Math.max(...streamLines.map(lines => lines.length));
+                const activeGroup = this.document.activeGroup;
                 
                 // Clear and rebuild
                 this.container.innerHTML = '';
                 
-                for (let chunkIndex = 0; chunkIndex < maxChunks; chunkIndex++) {
-                    const chunk = this.createChunk(chunkIndex + 1);
+                let totalChunks = 0;
+                
+                // Render each paragraph group
+                for (let groupIndex = 0; groupIndex < this.document.streamGroups.length; groupIndex++) {
+                    const group = this.document.streamGroups[groupIndex];
                     
-                    for (let streamIndex = 0; streamIndex < this.document.streamCount; streamIndex++) {
-                        const stream = this.createStream(streamIndex, chunkIndex, streamLines[streamIndex][chunkIndex] || '');
-                        chunk.appendChild(stream);
+                    // Break all streams in this group into lines
+                    const streamLines = group.map(stream => this.breakTextIntoLines(stream));
+                    const maxChunks = Math.max(...streamLines.map(lines => lines.length));
+                    
+                    // Create paragraph group container
+                    const paragraphGroup = this.createParagraphGroup(groupIndex);
+                    
+                    for (let chunkIndex = 0; chunkIndex < maxChunks; chunkIndex++) {
+                        const chunk = this.createChunk(totalChunks + chunkIndex + 1, groupIndex, chunkIndex);
+                        
+                        for (let streamIndex = 0; streamIndex < this.document.streamCount; streamIndex++) {
+                            const stream = this.createStream(
+                                streamIndex, 
+                                chunkIndex, 
+                                streamLines[streamIndex][chunkIndex] || '',
+                                groupIndex
+                            );
+                            chunk.appendChild(stream);
+                        }
+                        
+                        paragraphGroup.appendChild(chunk);
                     }
                     
-                    this.container.appendChild(chunk);
+                    this.container.appendChild(paragraphGroup);
+                    totalChunks += maxChunks;
                 }
                 
                 // Restore cursor position
-                if (activeStream !== null && activeCursor !== null) {
-                    const cursorPos = this.findCursorPosition(activeStream, activeCursor);
+                if (activeStream !== null && activeCursor !== null && activeGroup !== null) {
+                    const cursorPos = this.findCursorPosition(activeStream, activeCursor, activeGroup);
                     const targetElement = this.container.querySelector(
-                        `[data-stream-index="${activeStream}"][data-chunk-index="${cursorPos.chunkIndex}"]`
+                        `[data-stream-index="${activeStream}"][data-chunk-index="${cursorPos.chunkIndex}"][data-group-index="${activeGroup}"]`
                     );
                     
                     if (targetElement) {
@@ -383,44 +520,84 @@
                     }
                 }
                 
-                document.getElementById('chunkCount').textContent = maxChunks;
+                document.getElementById('chunkCount').textContent = totalChunks;
                 this.isUpdating = false;
             }
             
-            createChunk(number) {
+            createParagraphGroup(groupIndex) {
+                const paragraphGroup = document.createElement('div');
+                paragraphGroup.className = 'paragraph-group';
+                paragraphGroup.dataset.groupIndex = groupIndex;
+                
+                // Add visual indicator for paragraph breaks (except for first group)
+                if (groupIndex > 0) {
+                    const breakHeader = document.createElement('div');
+                    breakHeader.className = 'paragraph-break-header';
+                    
+                    const leftLine = document.createElement('div');
+                    leftLine.className = 'paragraph-break-line';
+                    
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.className = 'paragraph-delete-btn';
+                    deleteBtn.innerHTML = '×';
+                    deleteBtn.title = 'Remove paragraph break';
+                    deleteBtn.onclick = () => this.removeParagraphBreakHandler(groupIndex);
+                    
+                    const rightLine = document.createElement('div');
+                    rightLine.className = 'paragraph-break-line';
+                    
+                    breakHeader.appendChild(leftLine);
+                    breakHeader.appendChild(deleteBtn);
+                    breakHeader.appendChild(rightLine);
+                    
+                    paragraphGroup.appendChild(breakHeader);
+                }
+                
+                return paragraphGroup;
+            }
+            
+            createChunk(number, groupIndex, localChunkIndex) {
                 const chunk = document.createElement('div');
                 chunk.className = 'stream-chunk';
                 chunk.dataset.chunkNumber = number;
+                chunk.dataset.groupIndex = groupIndex;
+                chunk.dataset.localChunkIndex = localChunkIndex;
                 return chunk;
             }
             
-            createStream(streamIndex, chunkIndex, text) {
+            createStream(streamIndex, chunkIndex, text, groupIndex) {
                 const stream = document.createElement('div');
                 stream.className = `stream stream-${streamIndex}`;
                 stream.contentEditable = true;
                 stream.dataset.streamIndex = streamIndex;
                 stream.dataset.chunkIndex = chunkIndex;
+                stream.dataset.groupIndex = groupIndex;
                 stream.textContent = text;
                 
-                if (streamIndex === 0 && chunkIndex === 0 && !text) {
+                if (streamIndex === 0 && chunkIndex === 0 && groupIndex === 0 && !text) {
                     stream.dataset.placeholder = 'Start writing your multi-stream story...';
                 }
                 
-                stream.addEventListener('input', (e) => this.handleInput(e, streamIndex));
-                stream.addEventListener('keydown', (e) => this.handleKeyDown(e, streamIndex, chunkIndex));
+                stream.addEventListener('input', (e) => this.handleInput(e, streamIndex, groupIndex));
+                stream.addEventListener('keydown', (e) => this.handleKeyDown(e, streamIndex, chunkIndex, groupIndex));
+                stream.addEventListener('focus', (e) => {
+                    lastFocusedElement = e.target;
+                });
                 
                 return stream;
             }
             
-            handleInput(event, streamIndex) {
+            handleInput(event, streamIndex, groupIndex) {
                 if (this.isUpdating) return;
                 
                 const element = event.target;
                 const cursorPos = this.getCursorPosition(element);
                 const chunkIndex = parseInt(element.dataset.chunkIndex);
                 
-                // Reconstruct the full text for this stream
-                const chunks = Array.from(this.container.querySelectorAll(`[data-stream-index="${streamIndex}"]`));
+                // Reconstruct the full text for this stream in this group
+                const chunks = Array.from(this.container.querySelectorAll(
+                    `[data-stream-index="${streamIndex}"][data-group-index="${groupIndex}"]`
+                ));
                 let absolutePosition = 0;
                 
                 // Calculate absolute cursor position
@@ -431,14 +608,14 @@
                 }
                 absolutePosition += cursorPos;
                 
-                // Get full text
+                // Get full text for this stream in this group
                 const fullText = chunks.map(chunk => chunk.textContent).join('');
                 
                 // Update document
-                this.document.setStreamText(streamIndex, fullText, absolutePosition);
+                this.document.setStreamText(streamIndex, fullText, absolutePosition, groupIndex);
             }
             
-            handleKeyDown(event, streamIndex, chunkIndex) {
+            handleKeyDown(event, streamIndex, chunkIndex, groupIndex) {
                 if (event.key === 'Tab') {
                     event.preventDefault();
                     
@@ -446,7 +623,7 @@
                         // Shift+Tab: switch to previous voice
                         const prevStreamIndex = (streamIndex - 1 + this.document.streamCount) % this.document.streamCount;
                         const prevElement = this.container.querySelector(
-                            `[data-stream-index="${prevStreamIndex}"][data-chunk-index="${chunkIndex}"]`
+                            `[data-stream-index="${prevStreamIndex}"][data-chunk-index="${chunkIndex}"][data-group-index="${groupIndex}"]`
                         );
                         if (prevElement) {
                             prevElement.focus();
@@ -479,13 +656,53 @@
                 selection.removeAllRanges();
                 selection.addRange(range);
             }
+            
+            removeParagraphBreakHandler(groupIndex) {
+                // Confirm before removing
+                if (confirm('Remove this paragraph break? The content will be merged with the paragraph above.')) {
+                    // Remove the paragraph break (merge with previous group)
+                    this.document.removeParagraphBreak(groupIndex - 1);
+                }
+            }
         }
         
         // Initialize the editor
         const doc = new MultiStreamDocument(3);
         const view = new MultiStreamView(document.getElementById('editorArea'), doc);
         
+        // Make view available globally for document model to use
+        window.view = view;
+        
+        // Track the last focused text element
+        let lastFocusedElement = null;
+        
         // Global functions for UI
+        function insertParagraphBreak() {
+            // Use the last focused element or try to find the current one
+            const focusedElement = lastFocusedElement || document.activeElement;
+            
+            if (!focusedElement || !focusedElement.dataset || !focusedElement.dataset.chunkIndex) {
+                // If no element is focused, try to use the first text area
+                const firstTextArea = document.querySelector('[data-stream-index="0"][data-group-index="0"][data-chunk-index="0"]');
+                if (firstTextArea) {
+                    lastFocusedElement = firstTextArea;
+                } else {
+                    alert('Please click in a text area first');
+                    return;
+                }
+            }
+            
+            const targetElement = lastFocusedElement;
+            const chunkIndex = parseInt(targetElement.dataset.chunkIndex);
+            const groupIndex = parseInt(targetElement.dataset.groupIndex);
+            
+            // Set the active group to the current group
+            doc.activeGroup = groupIndex;
+            
+            // Insert paragraph break at the end of this chunk
+            doc.insertParagraphBreak(chunkIndex);
+        }
+        
         function changeStreamCount() {
             const currentCount = doc.streamCount;
             const options = [2, 3, 4, 5];
@@ -560,14 +777,18 @@
         
         function selectStreamCount(newCount) {
             if (newCount >= 2 && newCount <= 5) {
-                const oldStreams = doc.streams.slice();
+                const oldGroups = doc.streamGroups.map(group => group.slice());
                 doc.streamCount = newCount;
-                doc.streams = new Array(newCount).fill('');
                 
-                // Copy over existing streams
-                for (let i = 0; i < Math.min(oldStreams.length, newCount); i++) {
-                    doc.streams[i] = oldStreams[i];
-                }
+                // Resize each group to the new stream count
+                doc.streamGroups = oldGroups.map(oldGroup => {
+                    const newGroup = new Array(newCount).fill('');
+                    // Copy over existing streams
+                    for (let i = 0; i < Math.min(oldGroup.length, newCount); i++) {
+                        newGroup[i] = oldGroup[i];
+                    }
+                    return newGroup;
+                });
                 
                 document.getElementById('streamCount').textContent = newCount;
                 view.render();
@@ -596,17 +817,24 @@ version: "1.0"
 
 `;
             
-            // Find all chunks by breaking streams into lines
-            const streamLines = doc.streams.map(stream => view.breakTextIntoLines(stream));
-            const maxChunks = Math.max(...streamLines.map(lines => lines.length));
-            
-            for (let chunkIndex = 0; chunkIndex < maxChunks; chunkIndex++) {
-                content += `=== Chunk ${chunkIndex + 1} ===\n`;
-                for (let streamIndex = 0; streamIndex < doc.streamCount; streamIndex++) {
-                    const line = streamLines[streamIndex][chunkIndex] || '';
-                    if (line.trim()) {
-                        content += `Stream ${streamIndex + 1}: ${line}\n`;
+            // Save each paragraph group
+            for (let groupIndex = 0; groupIndex < doc.streamGroups.length; groupIndex++) {
+                const group = doc.streamGroups[groupIndex];
+                content += `=== Paragraph ${groupIndex + 1} ===\n`;
+                
+                // Find all chunks by breaking streams into lines
+                const streamLines = group.map(stream => view.breakTextIntoLines(stream));
+                const maxChunks = Math.max(...streamLines.map(lines => lines.length));
+                
+                for (let chunkIndex = 0; chunkIndex < maxChunks; chunkIndex++) {
+                    content += `--- Chunk ${chunkIndex + 1} ---\n`;
+                    for (let streamIndex = 0; streamIndex < doc.streamCount; streamIndex++) {
+                        const line = streamLines[streamIndex][chunkIndex] || '';
+                        if (line.trim()) {
+                            content += `Stream ${streamIndex + 1}: ${line}\n`;
+                        }
                     }
+                    content += '\n';
                 }
                 content += '\n';
             }
@@ -649,8 +877,9 @@ version: "1.0"
             let inMetadata = false;
             let inContent = false;
             let metadata = {};
+            let currentParagraph = null;
             let currentChunk = null;
-            let chunks = [];
+            let paragraphs = [];
             
             for (const line of lines) {
                 const trimmed = line.trim();
@@ -674,8 +903,15 @@ version: "1.0"
                 }
                 
                 if (inContent) {
-                    if (trimmed.startsWith('=== Chunk')) {
-                        if (currentChunk) chunks.push(currentChunk);
+                    if (trimmed.startsWith('=== Paragraph')) {
+                        if (currentParagraph) {
+                            if (currentChunk) currentParagraph.push(currentChunk);
+                            paragraphs.push(currentParagraph);
+                        }
+                        currentParagraph = [];
+                        currentChunk = null;
+                    } else if (trimmed.startsWith('--- Chunk') || trimmed.startsWith('=== Chunk')) {
+                        if (currentChunk) currentParagraph.push(currentChunk);
                         currentChunk = {};
                     } else if (trimmed.startsWith('Stream ')) {
                         const match = trimmed.match(/^Stream (\d+): (.*)$/);
@@ -687,33 +923,48 @@ version: "1.0"
                 }
             }
             
-            if (currentChunk) chunks.push(currentChunk);
+            // Handle final chunk and paragraph
+            if (currentChunk) currentParagraph.push(currentChunk);
+            if (currentParagraph) paragraphs.push(currentParagraph);
             
-            // Reconstruct streams
+            // Reconstruct stream groups
             const streamCount = parseInt(metadata.streams) || 3;
-            const newStreams = new Array(streamCount).fill('');
+            const newStreamGroups = [];
             
-            for (let streamIndex = 0; streamIndex < streamCount; streamIndex++) {
-                const streamParts = chunks
-                    .map(chunk => chunk[streamIndex] || '')
-                    .filter((part, index, arr) => {
-                        // Remove empty parts at the end
-                        const lastNonEmpty = arr.map((p, i) => p ? i : -1).filter(i => i >= 0).pop();
-                        return index <= lastNonEmpty || part;
-                    });
-                newStreams[streamIndex] = streamParts.join('');
+            for (let paragraphIndex = 0; paragraphIndex < paragraphs.length; paragraphIndex++) {
+                const chunks = paragraphs[paragraphIndex];
+                const groupStreams = new Array(streamCount).fill('');
+                
+                for (let streamIndex = 0; streamIndex < streamCount; streamIndex++) {
+                    const streamParts = chunks
+                        .map(chunk => chunk[streamIndex] || '')
+                        .filter((part, index, arr) => {
+                            // Remove empty parts at the end
+                            const lastNonEmpty = arr.map((p, i) => p ? i : -1).filter(i => i >= 0).pop();
+                            return index <= lastNonEmpty || part;
+                        });
+                    groupStreams[streamIndex] = streamParts.join('');
+                }
+                
+                newStreamGroups.push(groupStreams);
+            }
+            
+            // Ensure at least one group exists
+            if (newStreamGroups.length === 0) {
+                newStreamGroups.push(new Array(streamCount).fill(''));
             }
             
             // Update document
             doc.streamCount = streamCount;
-            doc.streams = newStreams;
+            doc.streamGroups = newStreamGroups;
             doc.activeStream = 0;
             doc.activeCursor = 0;
+            doc.activeGroup = 0;
             
             document.getElementById('streamCount').textContent = streamCount;
             doc.notifyChange();
             
-            alert(`Loaded "${metadata.title || 'Untitled'}" with ${streamCount} streams`);
+            alert(`Loaded "${metadata.title || 'Untitled'}" with ${streamCount} streams and ${newStreamGroups.length} paragraphs`);
         }
         
         function exportHtml() {
@@ -742,18 +993,26 @@ version: "1.0"
     <h1>${title}</h1>
 `;
             
-            const streamLines = doc.streams.map(stream => view.breakTextIntoLines(stream));
-            const maxChunks = Math.max(...streamLines.map(lines => lines.length));
-            
-            for (let chunkIndex = 0; chunkIndex < maxChunks; chunkIndex++) {
-                html += '    <div class="stream-chunk">\n';
-                for (let streamIndex = 0; streamIndex < doc.streamCount; streamIndex++) {
-                    const line = streamLines[streamIndex][chunkIndex] || '';
-                    if (line.trim()) {
-                        html += `        <div class="stream stream-${streamIndex}">${line}</div>\n`;
-                    }
+            for (let groupIndex = 0; groupIndex < doc.streamGroups.length; groupIndex++) {
+                const group = doc.streamGroups[groupIndex];
+                
+                if (groupIndex > 0) {
+                    html += '    <div class="paragraph-break"></div>\n';
                 }
-                html += '    </div>\n';
+                
+                const streamLines = group.map(stream => view.breakTextIntoLines(stream));
+                const maxChunks = Math.max(...streamLines.map(lines => lines.length));
+                
+                for (let chunkIndex = 0; chunkIndex < maxChunks; chunkIndex++) {
+                    html += '    <div class="stream-chunk">\n';
+                    for (let streamIndex = 0; streamIndex < doc.streamCount; streamIndex++) {
+                        const line = streamLines[streamIndex][chunkIndex] || '';
+                        if (line.trim()) {
+                            html += `        <div class="stream stream-${streamIndex}">${line}</div>\n`;
+                        }
+                    }
+                    html += '    </div>\n';
+                }
             }
             
             html += `</body>
@@ -801,26 +1060,34 @@ version: "1.0"
 
 `;
             
-            const streamLines = doc.streams.map(stream => view.breakTextIntoLines(stream));
-            const maxChunks = Math.max(...streamLines.map(lines => lines.length));
-            
-            for (let chunkIndex = 0; chunkIndex < maxChunks; chunkIndex++) {
-                for (let streamIndex = 0; streamIndex < doc.streamCount; streamIndex++) {
-                    const line = streamLines[streamIndex][chunkIndex] || '';
-                    const commands = ['\\voiceone', '\\voicetwo', '\\voicethree', '\\voicefour', '\\voicefive'];
-                    const command = commands[streamIndex] || '\\voicetwo';
-                    
-                    if (line.trim()) {
-                        latex += `${command}{${line.replace(/&/g, '\\&').replace(/#/g, '\\#')}}\n`;
-                    }
-                    
-                    if (streamIndex < doc.streamCount - 1) {
-                        latex += '\\switchcolumn\n';
-                    }
+            for (let groupIndex = 0; groupIndex < doc.streamGroups.length; groupIndex++) {
+                const group = doc.streamGroups[groupIndex];
+                
+                if (groupIndex > 0) {
+                    latex += '\n\\switchcolumn*\n\\vspace{20pt}\n\\switchcolumn*\n\n';
                 }
                 
-                if (chunkIndex < maxChunks - 1) {
-                    latex += '\n\\switchcolumn*\n\n';
+                const streamLines = group.map(stream => view.breakTextIntoLines(stream));
+                const maxChunks = Math.max(...streamLines.map(lines => lines.length));
+                
+                for (let chunkIndex = 0; chunkIndex < maxChunks; chunkIndex++) {
+                    for (let streamIndex = 0; streamIndex < doc.streamCount; streamIndex++) {
+                        const line = streamLines[streamIndex][chunkIndex] || '';
+                        const commands = ['\\voiceone', '\\voicetwo', '\\voicethree', '\\voicefour', '\\voicefive'];
+                        const command = commands[streamIndex] || '\\voicetwo';
+                        
+                        if (line.trim()) {
+                            latex += `${command}{${line.replace(/&/g, '\\&').replace(/#/g, '\\#')}}\n`;
+                        }
+                        
+                        if (streamIndex < doc.streamCount - 1) {
+                            latex += '\\switchcolumn\n';
+                        }
+                    }
+                    
+                    if (chunkIndex < maxChunks - 1) {
+                        latex += '\n\\switchcolumn*\n\n';
+                    }
                 }
             }
             
@@ -840,9 +1107,10 @@ version: "1.0"
         
         function clearAll() {
             if (confirm('Clear all content? This cannot be undone.')) {
-                doc.streams = new Array(doc.streamCount).fill('');
+                doc.streamGroups = [new Array(doc.streamCount).fill('')];
                 doc.activeStream = 0;
                 doc.activeCursor = 0;
+                doc.activeGroup = 0;
                 doc.notifyChange();
             }
         }
