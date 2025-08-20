@@ -200,7 +200,7 @@
         
         .stream-chunk {
             position: relative;
-            margin-bottom: 45px;
+            margin-bottom: 75px;
         }
         
         .stream-chunk::before {
@@ -225,7 +225,7 @@
         .stream {
             min-height: 30px;
             padding: 0px 0px 0px 15px;
-            margin-bottom: -2px;
+            margin-bottom: -4px;
             border: none;
             outline: none;
             font-family: Georgia, serif;
@@ -251,27 +251,27 @@
         .stream-0 { 
             color: black; 
             font-style: normal;
-            border-left: 3px solid rgba(206, 205, 205, 0.3);
+            border-left: 3px solid rgba(233, 233, 233, 0.3);
         }
         .stream-1 { 
             color: black;
             font-style: normal;
-            border-left: 3px solid rgba(206, 205, 205, 0.3);
+            border-left: 3px solid rgba(233, 233, 233, 0.3);
         }
         .stream-2 { 
             color: black; 
             font-style: normal;
-            border-left: 3px solid rgba(206, 205, 205, 0.3);
+            border-left: 3px solid rgba(233, 233, 233, 0.3);
         }
         .stream-3 { 
             color: black; 
             font-style: normal;
-            border-left: 3px solid rgba(206, 205, 205, 0.3);
+            border-left: 3px solid rgba(233, 233, 233, 0.3);
         }
         .stream-4 { 
             color: black; 
             font-style: normal;
-            border-left: 3px solid rgba(206, 205, 205, 0.3);
+            border-left: 3px solid rgba(233, 233, 233, 0.3);
         }
         
         .footer {
@@ -1334,44 +1334,124 @@ version: "1.0"
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${title}</title>
     <style>
-        body { font-family: Georgia, serif; max-width: 800px; margin: 0 auto; padding: 20px; line-height: 1.6; }
-        h1 { text-align: center; color: #2c3e50; }
-        .stream-chunk { margin-bottom: 30px; border-bottom: 1px solid #eee; padding-bottom: 20px; }
-        .stream { padding: 10px 15px; margin-bottom: 5px; }
-        .stream-0 { color: #8B4513; font-style: italic; border-left: 3px solid rgba(139, 69, 19, 0.3); }
-        .stream-1 { color: #2c3e50; border-left: 3px solid rgba(44, 62, 80, 0.3); }
-        .stream-2 { color: #4682B4; font-style: italic; border-left: 3px solid rgba(70, 130, 180, 0.3); }
-        .stream-3 { color: #27AE60; font-style: italic; border-left: 3px solid rgba(39, 174, 96, 0.3); }
-        .stream-4 { color: #E74C3C; font-style: italic; border-left: 3px solid rgba(231, 76, 60, 0.3); }
+        body {
+            font-family: Georgia, serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            padding-bottom: 100px;
+        }
+        
+        .title-area {
+            padding: 80px 100px 20px 100px;
+        }
+        
+        .title {
+            font-family: Georgia, serif;
+            font-size: 28px;
+            font-weight: bold;
+            text-align: center;
+            color: #2c3e50;
+            padding: 20px 0;
+        }
+        
+        .content-area {
+            min-height: 500px;
+            padding: 0;
+            margin: 40px 100px 100px 100px;
+        }
+        
+        .paragraph-group {
+            position: relative;
+        }
+        
+        .paragraph-break {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 60px 0 40px 0;
+            padding: 20px;
+        }
+        
+        .paragraph-break-symbol {
+            font-size: 24px;
+            color: #adb5bd;
+            font-family: Georgia, serif;
+        }
+        
+        .stream-chunk {
+            position: relative;
+            margin-bottom: 75px;
+        }
+        
+        .stream {
+            min-height: 30px;
+            padding: 0px 0px 0px 0px;
+            margin-bottom: -7px;
+            font-family: Georgia, serif;
+            font-size: 16px; 
+            line-height: 1.6;
+            background: transparent;
+            white-space: nowrap;
+            width: 100%;
+            color: black;
+            font-style: normal;
+        }
+        
+        .stream-0, .stream-1, .stream-2, .stream-3, .stream-4 { 
+            color: black; 
+            font-style: normal;
+        }
     </style>
 </head>
 <body>
-    <h1>${title}</h1>
+    <div class="container">
+        <div class="title-area">
+            <div class="title">${title}</div>
+        </div>
+        <div class="content-area">
 `;
             
             for (let groupIndex = 0; groupIndex < doc.streamGroups.length; groupIndex++) {
                 const group = doc.streamGroups[groupIndex];
                 
+                html += '            <div class="paragraph-group">\n';
+                
                 if (groupIndex > 0) {
-                    html += '    <div class="paragraph-break"></div>\n';
+                    html += '                <div class="paragraph-break">\n';
+                    html += '                    <span class="paragraph-break-symbol">§</span>\n';
+                    html += '                </div>\n';
                 }
                 
                 const streamLines = group.map(stream => view.breakTextIntoLines(stream));
                 const maxChunks = Math.max(...streamLines.map(lines => lines.length));
                 
                 for (let chunkIndex = 0; chunkIndex < maxChunks; chunkIndex++) {
-                    html += '    <div class="stream-chunk">\n';
+                    html += '                <div class="stream-chunk">\n';
                     for (let streamIndex = 0; streamIndex < doc.streamCount; streamIndex++) {
                         const line = streamLines[streamIndex][chunkIndex] || '';
                         if (line.trim()) {
-                            html += `        <div class="stream stream-${streamIndex}">${line}</div>\n`;
+                            html += `                    <div class="stream stream-${streamIndex}">${line}</div>\n`;
                         }
                     }
-                    html += '    </div>\n';
+                    html += '                </div>\n';
                 }
+                
+                html += '            </div>\n';
             }
             
-            html += `</body>
+            html += `        </div>
+    </div>
+</body>
 </html>`;
             
             const blob = new Blob([html], { type: 'text/html' });
