@@ -80,41 +80,47 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            margin-top: 40px;
-            margin-bottom: 20px;
-            border-top: 2px solid #e9ecef;
-            padding-top: 10px;
-        }
-        
-        .paragraph-break-line {
-            flex: 1;
-            height: 1px;
-            background: #e9ecef;
-        }
-        
-        .paragraph-delete-btn {
-            background: #f8f9fa;
-            border: 1px solid #dee2e6;
-            border-radius: 12px;
-            padding: 4px 8px;
-            margin: 0 10px;
-            font-size: 10px;
-            color: #6c757d;
+            margin: 60px 0 40px 0;
+            padding: 20px;
             cursor: pointer;
-            opacity: 0.7;
+        }
+        
+        .paragraph-break-symbol {
+            font-size: 24px;
+            color: #adb5bd;
+            font-family: Georgia, serif;
+            user-select: none;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+        
+        .paragraph-delete-indicator {
+            position: absolute;
+            top: -8px;
+            right: -12px;
+            background: #dc3545;
+            color: white;
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            font-size: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transform: scale(0.8);
             transition: all 0.2s ease;
             font-family: monospace;
+            font-weight: bold;
         }
         
-        .paragraph-delete-btn:hover {
-            background: #e9ecef;
-            border-color: #dc3545;
-            color: #dc3545;
-            opacity: 1;
+        .paragraph-break-header:hover .paragraph-break-symbol {
+            color: #868e96;
         }
         
-        .paragraph-break-header:hover .paragraph-delete-btn {
+        .paragraph-break-header:hover .paragraph-delete-indicator {
             opacity: 1;
+            transform: scale(1);
         }
         
         .stream-chunk {
@@ -568,22 +574,19 @@
                 if (groupIndex > 0) {
                     const breakHeader = document.createElement('div');
                     breakHeader.className = 'paragraph-break-header';
+                    breakHeader.title = 'Click to remove paragraph break';
+                    breakHeader.onclick = () => this.removeParagraphBreakHandler(groupIndex);
                     
-                    const leftLine = document.createElement('div');
-                    leftLine.className = 'paragraph-break-line';
+                    const symbol = document.createElement('span');
+                    symbol.className = 'paragraph-break-symbol';
+                    symbol.innerHTML = '§'; // Single section symbol - classic typography
                     
-                    const deleteBtn = document.createElement('button');
-                    deleteBtn.className = 'paragraph-delete-btn';
-                    deleteBtn.innerHTML = '×';
-                    deleteBtn.title = 'Remove paragraph break';
-                    deleteBtn.onclick = () => this.removeParagraphBreakHandler(groupIndex);
+                    const deleteIndicator = document.createElement('span');
+                    deleteIndicator.className = 'paragraph-delete-indicator';
+                    deleteIndicator.innerHTML = '×';
                     
-                    const rightLine = document.createElement('div');
-                    rightLine.className = 'paragraph-break-line';
-                    
-                    breakHeader.appendChild(leftLine);
-                    breakHeader.appendChild(deleteBtn);
-                    breakHeader.appendChild(rightLine);
+                    symbol.appendChild(deleteIndicator);
+                    breakHeader.appendChild(symbol);
                     
                     paragraphGroup.appendChild(breakHeader);
                 }
