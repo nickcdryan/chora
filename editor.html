@@ -97,7 +97,7 @@
         
         .stream {
             min-height: 30px;
-            padding: 1px 1px;
+            padding: 0px 0px;
             border: none;
             outline: none;
             font-family: Georgia, serif;
@@ -192,7 +192,7 @@
         </div>
         
         <div class="footer">
-            Type naturally • Real-time text reflow • Tab to switch streams • Save/Load your work
+            Type naturally • Real-time text reflow • Tab for spaces • Shift+Tab to switch voices • Save/Load your work
         </div>
         
         <!-- Hidden element for text measurement -->
@@ -441,12 +441,19 @@
             handleKeyDown(event, streamIndex, chunkIndex) {
                 if (event.key === 'Tab') {
                     event.preventDefault();
-                    const nextStreamIndex = (streamIndex + 1) % this.document.streamCount;
-                    const nextElement = this.container.querySelector(
-                        `[data-stream-index="${nextStreamIndex}"][data-chunk-index="${chunkIndex}"]`
-                    );
-                    if (nextElement) {
-                        nextElement.focus();
+                    
+                    if (event.shiftKey) {
+                        // Shift+Tab: switch to previous voice
+                        const prevStreamIndex = (streamIndex - 1 + this.document.streamCount) % this.document.streamCount;
+                        const prevElement = this.container.querySelector(
+                            `[data-stream-index="${prevStreamIndex}"][data-chunk-index="${chunkIndex}"]`
+                        );
+                        if (prevElement) {
+                            prevElement.focus();
+                        }
+                    } else {
+                        // Regular Tab: insert 4 spaces using execCommand for simplicity
+                        document.execCommand('insertText', false, '            ');
                     }
                 }
             }
