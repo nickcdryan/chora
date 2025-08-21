@@ -375,7 +375,7 @@
         </div>
         
         <div class="footer">
-            <div>Tab for spaces • Shift+Tab to switch voices</div>
+            <div>Tab for spaces • Shift+Tab to switch voices • Return/Shift+Return to switch chunks</div>
             <div class="footer-counters">
                 <span id="streamCount">3</span> voices • <span id="chunkCount">1</span> chunks
                 <span id="autoSaveIndicator" style="opacity: 0; margin-left: 15px; color: #999;"></span>
@@ -1070,13 +1070,13 @@ version: "1.0"
                     event.preventDefault();
                     
                     if (event.shiftKey) {
-                        // Shift+Tab: switch to previous voice
-                        const prevStreamIndex = (streamIndex - 1 + this.document.streamCount) % this.document.streamCount;
-                        const prevElement = this.container.querySelector(
-                            `[data-stream-index="${prevStreamIndex}"][data-chunk-index="${chunkIndex}"][data-group-index="${groupIndex}"]`
+                        // Shift+Tab: switch to next voice (cycling down)
+                        const nextStreamIndex = (streamIndex + 1) % this.document.streamCount;
+                        const nextElement = this.container.querySelector(
+                            `[data-stream-index="${nextStreamIndex}"][data-chunk-index="${chunkIndex}"][data-group-index="${groupIndex}"]`
                         );
-                        if (prevElement) {
-                            prevElement.focus();
+                        if (nextElement) {
+                            nextElement.focus();
                         }
                     } else {
                         // Regular Tab: insert 4 spaces using execCommand for simplicity
@@ -1085,27 +1085,59 @@ version: "1.0"
                 } else if (event.key === 'Enter') {
                     event.preventDefault();
                     
-                    // Find the next chunk in the same stream
-                    const nextChunkIndex = chunkIndex + 1;
-                    let nextElement = null;
-                    
-                    // First try to find next chunk in the same group
-                    nextElement = this.container.querySelector(
-                        `[data-stream-index="${streamIndex}"][data-chunk-index="${nextChunkIndex}"][data-group-index="${groupIndex}"]`
-                    );
-                    
-                    // If not found in current group, try next group at chunk 0
-                    if (!nextElement) {
-                        const nextGroupIndex = groupIndex + 1;
+                    if (event.shiftKey) {
+                        // Shift+Enter: move to previous chunk in the same stream
+                        let prevElement = null;
+                        
+                        if (chunkIndex > 0) {
+                            // Try to find previous chunk in the same group
+                            const prevChunkIndex = chunkIndex - 1;
+                            prevElement = this.container.querySelector(
+                                `[data-stream-index="${streamIndex}"][data-chunk-index="${prevChunkIndex}"][data-group-index="${groupIndex}"]`
+                            );
+                        } else {
+                            // If at chunk 0, try to find the last chunk of the same stream in the previous group
+                            const prevGroupIndex = groupIndex - 1;
+                            if (prevGroupIndex >= 0) {
+                                // Find all chunks in the previous group for this stream
+                                const prevGroupChunks = this.container.querySelectorAll(
+                                    `[data-stream-index="${streamIndex}"][data-group-index="${prevGroupIndex}"]`
+                                );
+                                // Get the last chunk (highest chunk index)
+                                if (prevGroupChunks.length > 0) {
+                                    prevElement = prevGroupChunks[prevGroupChunks.length - 1];
+                                }
+                            }
+                        }
+                        
+                        if (prevElement) {
+                            prevElement.focus();
+                            // Position cursor at the beginning of the previous chunk
+                            this.setCursor(prevElement, 0);
+                        }
+                    } else {
+                        // Regular Enter: move to next chunk in the same stream
+                        const nextChunkIndex = chunkIndex + 1;
+                        let nextElement = null;
+                        
+                        // First try to find next chunk in the same group
                         nextElement = this.container.querySelector(
-                            `[data-stream-index="${streamIndex}"][data-chunk-index="0"][data-group-index="${nextGroupIndex}"]`
+                            `[data-stream-index="${streamIndex}"][data-chunk-index="${nextChunkIndex}"][data-group-index="${groupIndex}"]`
                         );
-                    }
-                    
-                    if (nextElement) {
-                        nextElement.focus();
-                        // Position cursor at the beginning of the next chunk
-                        this.setCursor(nextElement, 0);
+                        
+                        // If not found in current group, try next group at chunk 0
+                        if (!nextElement) {
+                            const nextGroupIndex = groupIndex + 1;
+                            nextElement = this.container.querySelector(
+                                `[data-stream-index="${streamIndex}"][data-chunk-index="0"][data-group-index="${nextGroupIndex}"]`
+                            );
+                        }
+                        
+                        if (nextElement) {
+                            nextElement.focus();
+                            // Position cursor at the beginning of the next chunk
+                            this.setCursor(nextElement, 0);
+                        }
                     }
                 }
             }
