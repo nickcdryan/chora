@@ -378,6 +378,7 @@
             <div>Tab for spaces • Shift+Tab to switch voices</div>
             <div class="footer-counters">
                 <span id="streamCount">3</span> voices • <span id="chunkCount">1</span> chunks
+                <span id="autoSaveIndicator" style="opacity: 0; margin-left: 15px; color: #999;"></span>
             </div>
         </div>
         
@@ -406,6 +407,11 @@
                 this.saveStateTimeout = null; // For debouncing state saves
                 this.saveStateDelay = 500; // Save state after 500ms of inactivity
                 
+                // localStorage auto-save system
+                this.autoSaveTimeout = null;
+                this.autoSaveDelay = 2000; // Auto-save after 2 seconds of inactivity
+                this.lastAutoSaveTime = null;
+                
                 // Save initial state
                 this.saveState();
             }
@@ -417,6 +423,7 @@
                 // Only save state if the text actually changed
                 if (oldText !== text && !this.isUndoRedoing) {
                     this.saveStateDebounced();
+                    this.autoSaveDebounced();
                 }
                 
                 this.streamGroups[group][streamIndex] = text;
@@ -432,6 +439,7 @@
                 
                 if (!this.isUndoRedoing) {
                     this.saveState();
+                    this.autoSaveDebounced();
                 }
                 
                 this.streamGroups[group][streamIndex] = stream.slice(0, position) + text + stream.slice(position);
@@ -447,6 +455,7 @@
                 
                 if (!this.isUndoRedoing) {
                     this.saveState();
+                    this.autoSaveDebounced();
                 }
                 
                 this.streamGroups[group][streamIndex] = stream.slice(0, start) + stream.slice(end);
@@ -459,6 +468,7 @@
             insertParagraphBreak(chunkIndex) {
                 if (!this.isUndoRedoing) {
                     this.saveState();
+                    this.autoSaveDebounced();
                 }
                 
                 // Find which group the current chunk belongs to and split there
@@ -493,6 +503,7 @@
             removeParagraphBreak(groupIndex) {
                 if (!this.isUndoRedoing) {
                     this.saveState();
+                    this.autoSaveDebounced();
                 }
                 
                 // Merge the specified group with the next one
@@ -563,6 +574,7 @@
             setTitle(title) {
                 if (this.title !== title && !this.isUndoRedoing) {
                     this.saveStateDebounced();
+                    this.autoSaveDebounced();
                 }
                 this.title = title;
                 // Don't trigger notifyChange for title updates to avoid re-rendering
@@ -697,6 +709,110 @@
                 if (redoBtn) {
                     redoBtn.disabled = !this.canRedo();
                     redoBtn.style.opacity = this.canRedo() ? '1' : '0.5';
+                }
+            }
+            
+            // Auto-save to localStorage methods
+            autoSaveDebounced() {
+                // Clear existing timeout
+                if (this.autoSaveTimeout) {
+                    clearTimeout(this.autoSaveTimeout);
+                }
+                
+                // Set new timeout
+                this.autoSaveTimeout = setTimeout(() => {
+                    this.autoSaveToLocalStorage();
+                    this.autoSaveTimeout = null;
+                }, this.autoSaveDelay);
+            }
+            
+            autoSaveToLocalStorage() {
+                if (this.isUndoRedoing) return; // Don't auto-save during undo/redo operations
+                
+                try {
+                    const content = this.generateSaveFileContent();
+                    localStorage.setItem('chora_autosave', content);
+                    this.lastAutoSaveTime = new Date();
+                    this.updateAutoSaveIndicator();
+                } catch (error) {
+                    console.warn('Failed to auto-save to localStorage:', error);
+                }
+            }
+            
+            generateSaveFileContent() {
+                const now = new Date().toISOString().split('T')[0];
+                const title = this.title || 'Untitled Story';
+                
+                // Create the file content (reusing logic from saveFile function)
+                let content = `---
+streams: ${this.streamCount}
+title: "${title}"
+created: "${now}"
+version: "1.0"
+---
+
+`;
+                
+                // Save each paragraph group
+                for (let groupIndex = 0; groupIndex < this.streamGroups.length; groupIndex++) {
+                    const group = this.streamGroups[groupIndex];
+                    content += `=== Paragraph ${groupIndex + 1} ===\n`;
+                    
+                    // Find all chunks by breaking streams into lines
+                    const streamLines = group.map(stream => window.view ? window.view.breakTextIntoLines(stream) : [stream]);
+                    const maxChunks = Math.max(...streamLines.map(lines => lines.length));
+                    
+                    for (let chunkIndex = 0; chunkIndex < maxChunks; chunkIndex++) {
+                        content += `--- Chunk ${chunkIndex + 1} ---\n`;
+                        for (let streamIndex = 0; streamIndex < this.streamCount; streamIndex++) {
+                            const line = streamLines[streamIndex][chunkIndex] || '';
+                            if (line.trim()) {
+                                content += `Stream ${streamIndex + 1}: ${line}\n`;
+                            }
+                        }
+                        content += '\n';
+                    }
+                    content += '\n';
+                }
+                
+                return content;
+            }
+            
+            loadFromLocalStorage() {
+                try {
+                    const saved = localStorage.getItem('chora_autosave');
+                    if (saved && saved.trim()) {
+                        return saved;
+                    }
+                } catch (error) {
+                    console.warn('Failed to load from localStorage:', error);
+                    // Clear corrupted data
+                    this.clearAutoSave();
+                }
+                return null;
+            }
+            
+            clearAutoSave() {
+                try {
+                    localStorage.removeItem('chora_autosave');
+                    this.lastAutoSaveTime = null;
+                    this.updateAutoSaveIndicator();
+                } catch (error) {
+                    console.warn('Failed to clear auto-save:', error);
+                }
+            }
+            
+            updateAutoSaveIndicator() {
+                const indicator = document.getElementById('autoSaveIndicator');
+                if (indicator) {
+                    if (this.lastAutoSaveTime) {
+                        const timeStr = this.lastAutoSaveTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                        indicator.textContent = `Auto-saved at ${timeStr}`;
+                        indicator.style.opacity = '1';
+                    } else {
+                        indicator.textContent = '';
+                        indicator.style.opacity = '0';
+                    }
                 }
             }
         }
@@ -1014,6 +1130,26 @@
         // Make view available globally for document model to use
         window.view = view;
         
+        // Check for auto-saved work on page load
+        function checkForAutoSavedWork() {
+            const saved = doc.loadFromLocalStorage();
+            if (saved) {
+                try {
+                    parseAndLoadFile(saved);
+                    // Update the auto-save indicator to show when it was restored
+                    doc.lastAutoSaveTime = new Date();
+                    doc.updateAutoSaveIndicator();
+                } catch (error) {
+                    console.error('Failed to restore auto-saved work:', error);
+                    // Clear corrupted auto-save data and continue with fresh document
+                    doc.clearAutoSave();
+                }
+            }
+        }
+        
+        // Run auto-save check after a brief delay to allow page to fully load
+        setTimeout(checkForAutoSavedWork, 500);
+        
         // Track the last focused text element
         let lastFocusedElement = null;
         
@@ -1162,40 +1298,9 @@
         }
         
         function saveFile() {
-            const now = new Date().toISOString().split('T')[0];
+            // Use the new generateSaveFileContent method
+            const content = doc.generateSaveFileContent();
             const title = doc.title || 'Untitled Story';
-            
-            // Create the file content
-            let content = `---
-streams: ${doc.streamCount}
-title: "${title}"
-created: "${now}"
-version: "1.0"
----
-
-`;
-            
-            // Save each paragraph group
-            for (let groupIndex = 0; groupIndex < doc.streamGroups.length; groupIndex++) {
-                const group = doc.streamGroups[groupIndex];
-                content += `=== Paragraph ${groupIndex + 1} ===\n`;
-                
-                // Find all chunks by breaking streams into lines
-                const streamLines = group.map(stream => view.breakTextIntoLines(stream));
-                const maxChunks = Math.max(...streamLines.map(lines => lines.length));
-                
-                for (let chunkIndex = 0; chunkIndex < maxChunks; chunkIndex++) {
-                    content += `--- Chunk ${chunkIndex + 1} ---\n`;
-                    for (let streamIndex = 0; streamIndex < doc.streamCount; streamIndex++) {
-                        const line = streamLines[streamIndex][chunkIndex] || '';
-                        if (line.trim()) {
-                            content += `Stream ${streamIndex + 1}: ${line}\n`;
-                        }
-                    }
-                    content += '\n';
-                }
-                content += '\n';
-            }
             
             // Download the file
             const blob = new Blob([content], { type: 'text/plain' });
@@ -1205,6 +1310,9 @@ version: "1.0"
             a.download = `${title.replace(/[^a-z0-9]/gi, '_')}.txt`;
             a.click();
             URL.revokeObjectURL(url);
+            
+            // Clear auto-save since user explicitly saved
+            doc.clearAutoSave();
         }
         
         function loadFile() {
@@ -1325,8 +1433,6 @@ version: "1.0"
             
             document.getElementById('streamCount').textContent = streamCount;
             doc.notifyChange();
-            
-            alert(`Loaded "${metadata.title || 'Untitled'}" with ${streamCount} streams and ${newStreamGroups.length} paragraphs`);
         }
         
         function exportHtml() {
@@ -1557,6 +1663,9 @@ version: "1.0"
                 
                 // Clear title input
                 document.getElementById('titleInput').textContent = '';
+                
+                // Clear auto-save as well
+                doc.clearAutoSave();
                 
                 doc.notifyChange();
             }
