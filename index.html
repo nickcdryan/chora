@@ -1082,6 +1082,31 @@ version: "1.0"
                         // Regular Tab: insert 4 spaces using execCommand for simplicity
                         document.execCommand('insertText', false, '            ');
                     }
+                } else if (event.key === 'Enter') {
+                    event.preventDefault();
+                    
+                    // Find the next chunk in the same stream
+                    const nextChunkIndex = chunkIndex + 1;
+                    let nextElement = null;
+                    
+                    // First try to find next chunk in the same group
+                    nextElement = this.container.querySelector(
+                        `[data-stream-index="${streamIndex}"][data-chunk-index="${nextChunkIndex}"][data-group-index="${groupIndex}"]`
+                    );
+                    
+                    // If not found in current group, try next group at chunk 0
+                    if (!nextElement) {
+                        const nextGroupIndex = groupIndex + 1;
+                        nextElement = this.container.querySelector(
+                            `[data-stream-index="${streamIndex}"][data-chunk-index="0"][data-group-index="${nextGroupIndex}"]`
+                        );
+                    }
+                    
+                    if (nextElement) {
+                        nextElement.focus();
+                        // Position cursor at the beginning of the next chunk
+                        this.setCursor(nextElement, 0);
+                    }
                 }
             }
             
