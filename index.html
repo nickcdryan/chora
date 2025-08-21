@@ -758,19 +758,12 @@ version: "1.0"
                     const group = this.streamGroups[groupIndex];
                     content += `=== Paragraph ${groupIndex + 1} ===\n`;
                     
-                    // Find all chunks by breaking streams into lines
-                    const streamLines = group.map(stream => window.view ? window.view.breakTextIntoLines(stream) : [stream]);
-                    const maxChunks = Math.max(...streamLines.map(lines => lines.length));
-                    
-                    for (let chunkIndex = 0; chunkIndex < maxChunks; chunkIndex++) {
-                        content += `--- Chunk ${chunkIndex + 1} ---\n`;
-                        for (let streamIndex = 0; streamIndex < this.streamCount; streamIndex++) {
-                            const line = streamLines[streamIndex][chunkIndex] || '';
-                            if (line.trim()) {
-                                content += `Stream ${streamIndex + 1}: ${line}\n`;
-                            }
+                    // Save each stream as continuous text (no chunk breakdown)
+                    for (let streamIndex = 0; streamIndex < this.streamCount; streamIndex++) {
+                        const streamText = group[streamIndex] || '';
+                        if (streamText) {
+                            content += `Stream ${streamIndex + 1}: ${streamText}\n`;
                         }
-                        content += '\n';
                     }
                     content += '\n';
                 }
@@ -1344,7 +1337,6 @@ version: "1.0"
             let inContent = false;
             let metadata = {};
             let currentParagraph = null;
-            let currentChunk = null;
             let paragraphs = [];
             
             for (const line of lines) {
@@ -1370,46 +1362,47 @@ version: "1.0"
                 
                 if (inContent) {
                     if (trimmed.startsWith('=== Paragraph')) {
+                        // Save previous paragraph if it exists
                         if (currentParagraph) {
-                            if (currentChunk) currentParagraph.push(currentChunk);
                             paragraphs.push(currentParagraph);
                         }
-                        currentParagraph = [];
-                        currentChunk = null;
-                    } else if (trimmed.startsWith('--- Chunk') || trimmed.startsWith('=== Chunk')) {
-                        if (currentChunk) currentParagraph.push(currentChunk);
-                        currentChunk = {};
+                        // Start new paragraph
+                        currentParagraph = {};
                     } else if (trimmed.startsWith('Stream ')) {
-                        const match = trimmed.match(/^Stream (\d+): (.*)$/);
-                        if (match && currentChunk) {
+                        // Handle both new format (continuous) and old format (chunked)
+                        const match = line.match(/^Stream (\d+): (.*)$/);
+                        if (match && currentParagraph !== null) {
                             const streamIndex = parseInt(match[1]) - 1;
-                            currentChunk[streamIndex] = match[2];
+                            const streamContent = match[2];
+                            
+                            // If stream already exists in this paragraph, append (for old chunked format)
+                            if (currentParagraph[streamIndex]) {
+                                currentParagraph[streamIndex] += streamContent;
+                            } else {
+                                currentParagraph[streamIndex] = streamContent;
+                            }
                         }
                     }
+                    // Ignore chunk headers (for backward compatibility with old format)
                 }
             }
             
-            // Handle final chunk and paragraph
-            if (currentChunk) currentParagraph.push(currentChunk);
-            if (currentParagraph) paragraphs.push(currentParagraph);
+            // Handle final paragraph
+            if (currentParagraph) {
+                paragraphs.push(currentParagraph);
+            }
             
             // Reconstruct stream groups
             const streamCount = parseInt(metadata.streams) || 3;
             const newStreamGroups = [];
             
             for (let paragraphIndex = 0; paragraphIndex < paragraphs.length; paragraphIndex++) {
-                const chunks = paragraphs[paragraphIndex];
+                const paragraph = paragraphs[paragraphIndex];
                 const groupStreams = new Array(streamCount).fill('');
                 
+                // Copy stream content directly (no chunking involved)
                 for (let streamIndex = 0; streamIndex < streamCount; streamIndex++) {
-                    const streamParts = chunks
-                        .map(chunk => chunk[streamIndex] || '')
-                        .filter((part, index, arr) => {
-                            // Remove empty parts at the end
-                            const lastNonEmpty = arr.map((p, i) => p ? i : -1).filter(i => i >= 0).pop();
-                            return index <= lastNonEmpty || part;
-                        });
-                    groupStreams[streamIndex] = streamParts.join('');
+                    groupStreams[streamIndex] = paragraph[streamIndex] || '';
                 }
                 
                 newStreamGroups.push(groupStreams);
@@ -1551,7 +1544,7 @@ version: "1.0"
                     html += '                <div class="stream-chunk">\n';
                     for (let streamIndex = 0; streamIndex < doc.streamCount; streamIndex++) {
                         const line = streamLines[streamIndex][chunkIndex] || '';
-                        if (line.trim()) {
+                        if (line) {  // Export all content, including whitespace-only lines
                             html += `                    <div class="stream stream-${streamIndex}">${line}</div>\n`;
                         }
                     }
@@ -1624,7 +1617,7 @@ version: "1.0"
                         const commands = ['\\voiceone', '\\voicetwo', '\\voicethree', '\\voicefour', '\\voicefive'];
                         const command = commands[streamIndex] || '\\voicetwo';
                         
-                        if (line.trim()) {
+                        if (line) {  // Export all content, including whitespace-only lines
                             latex += `${command}{${line.replace(/&/g, '\\&').replace(/#/g, '\\#')}}\n`;
                         }
                         
