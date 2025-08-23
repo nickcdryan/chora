@@ -104,10 +104,32 @@
         }
         
         .content-area {
-            background: white;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-            padding-bottom: 100px;
+            background: transparent;
             margin-bottom: 20px;
+        }
+        
+        .pages-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 30px;
+            padding: 20px 0;
+        }
+        
+        .page {
+            width: 900px;
+            height: 600px;
+            background: white;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            position: relative;
+            padding: 0;
+            overflow: hidden;
+        }
+        
+        .page-content {
+            height: 100%;
+            overflow: hidden;
+            position: relative;
         }
         
         .title-area {
@@ -361,16 +383,8 @@
         </div>
         
         <div class="content-area">
-            <div class="title-area">
-                <div class="title-input" 
-                     contenteditable="true" 
-                     data-placeholder="Enter your story title..."
-                     id="titleInput">
-                </div>
-            </div>
-            
-            <div class="editor-area" id="editorArea">
-                <!-- Chunks will be added here -->
+            <div class="pages-container" id="pagesContainer">
+                <!-- Pages will be added here -->
             </div>
         </div>
         
@@ -819,6 +833,11 @@ version: "1.0"
                 this.maxLineWidth = 0;
                 this.isUpdating = false;
                 
+                // Page constants - simple chunk-based pagination
+                this.PAGE_HEIGHT = 600;
+                this.MAX_CHUNKS_PER_PAGE = 4; // Conservative: max 4 chunks per page
+                this.TITLE_HEIGHT = 180;
+                
                 this.calculateMaxWidth();
                 this.document.onChange(() => this.render());
                 
@@ -829,7 +848,51 @@ version: "1.0"
             }
             
             calculateMaxWidth() {
-                this.maxLineWidth = this.container.clientWidth - 40; // Account for padding
+                // Account for page width and padding
+                this.maxLineWidth = 900 - 200; // 900px page width - 100px left/right padding
+            }
+            
+            createNewPage() {
+                const page = document.createElement('div');
+                page.className = 'page';
+                
+                const pageContent = document.createElement('div');
+                pageContent.className = 'page-content';
+                
+                page.appendChild(pageContent);
+                return page;
+            }
+            
+
+            
+            measureTitleHeight() {
+                return this.TITLE_HEIGHT;
+            }
+            
+            createTitleArea() {
+                const titleArea = document.createElement('div');
+                titleArea.className = 'title-area';
+                
+                const titleInput = document.createElement('div');
+                titleInput.className = 'title-input';
+                titleInput.contentEditable = true;
+                titleInput.dataset.placeholder = 'Enter your story title...';
+                titleInput.id = 'titleInput';
+                titleInput.textContent = this.document.title || '';
+                
+                // Add event listener for title changes
+                titleInput.addEventListener('input', function() {
+                    window.view.document.setTitle(this.textContent);
+                });
+                
+                titleArea.appendChild(titleInput);
+                return titleArea;
+            }
+            
+            createEditorArea() {
+                const editorArea = document.createElement('div');
+                editorArea.className = 'editor-area';
+                return editorArea;
             }
             
             measureTextWidth(text) {
@@ -924,46 +987,106 @@ version: "1.0"
                 const activeCursor = this.document.activeCursor;
                 const activeGroup = this.document.activeGroup;
                 
-                // Clear and rebuild
-                this.container.innerHTML = '';
+                // Clear and rebuild pages container
+                const pagesContainer = document.getElementById('pagesContainer');
+                pagesContainer.innerHTML = '';
                 
+                let currentPage = this.createNewPage();
+                let currentPageHeight = 0;
                 let totalChunks = 0;
+                let isFirstPage = true;
                 
-                // Render each paragraph group
+                // Add title to first page if it exists
+                if (this.document.title && this.document.title.trim()) {
+                    const titleHeight = this.measureTitleHeight();
+                    if (currentPageHeight + titleHeight <= this.PAGE_HEIGHT) {
+                        const titleArea = this.createTitleArea();
+                        currentPage.querySelector('.page-content').appendChild(titleArea);
+                        currentPageHeight += titleHeight;
+                    }
+                }
+                
+                // Create editor area on current page
+                let currentEditorArea = this.createEditorArea();
+                currentPage.querySelector('.page-content').appendChild(currentEditorArea);
+                
+                let currentPageChunks = 0;
+                
+                // Flatten all chunks first, then paginate
+                const allChunks = [];
+                
+                // Build list of all chunks with their metadata
                 for (let groupIndex = 0; groupIndex < this.document.streamGroups.length; groupIndex++) {
                     const group = this.document.streamGroups[groupIndex];
-                    
-                    // Break all streams in this group into lines
                     const streamLines = group.map(stream => this.breakTextIntoLines(stream));
                     const maxChunks = Math.max(...streamLines.map(lines => lines.length));
                     
-                    // Create paragraph group container
-                    const paragraphGroup = this.createParagraphGroup(groupIndex);
-                    
                     for (let chunkIndex = 0; chunkIndex < maxChunks; chunkIndex++) {
-                        const chunk = this.createChunk(totalChunks + chunkIndex + 1, groupIndex, chunkIndex);
+                        allChunks.push({
+                            groupIndex,
+                            chunkIndex,
+                            streamLines,
+                            isNewParagraph: chunkIndex === 0
+                        });
+                    }
+                }
+                
+                // Current paragraph group container
+                let currentParagraphGroup = null;
+                let lastGroupIndex = -1;
+                
+                // Process each chunk
+                for (let i = 0; i < allChunks.length; i++) {
+                    const chunkData = allChunks[i];
+                    
+                    // Check if we need a new page
+                    if (currentPageChunks >= this.MAX_CHUNKS_PER_PAGE && currentPageChunks > 0) {
+                        // Add current page and start new one
+                        pagesContainer.appendChild(currentPage);
+                        currentPage = this.createNewPage();
+                        currentPageChunks = 0;
                         
-                        for (let streamIndex = 0; streamIndex < this.document.streamCount; streamIndex++) {
-                            const stream = this.createStream(
-                                streamIndex, 
-                                chunkIndex, 
-                                streamLines[streamIndex][chunkIndex] || '',
-                                groupIndex
-                            );
-                            chunk.appendChild(stream);
-                        }
+                        // Create new editor area
+                        currentEditorArea = this.createEditorArea();
+                        currentPage.querySelector('.page-content').appendChild(currentEditorArea);
                         
-                        paragraphGroup.appendChild(chunk);
+                        // Reset paragraph group tracking
+                        currentParagraphGroup = null;
+                        lastGroupIndex = -1;
                     }
                     
-                    this.container.appendChild(paragraphGroup);
-                    totalChunks += maxChunks;
+                    // Create or reuse paragraph group
+                    if (chunkData.groupIndex !== lastGroupIndex) {
+                        currentParagraphGroup = this.createParagraphGroup(chunkData.groupIndex);
+                        currentEditorArea.appendChild(currentParagraphGroup);
+                        lastGroupIndex = chunkData.groupIndex;
+                    }
+                    
+                    // Create the chunk
+                    const chunk = this.createChunk(totalChunks + 1, chunkData.groupIndex, chunkData.chunkIndex);
+                    
+                    for (let streamIndex = 0; streamIndex < this.document.streamCount; streamIndex++) {
+                        const stream = this.createStream(
+                            streamIndex, 
+                            chunkData.chunkIndex, 
+                            chunkData.streamLines[streamIndex][chunkData.chunkIndex] || '',
+                            chunkData.groupIndex
+                        );
+                        chunk.appendChild(stream);
+                    }
+                    
+                    currentParagraphGroup.appendChild(chunk);
+                    currentPageChunks++;
+                    totalChunks++;
                 }
+                
+                // Add the final page
+                pagesContainer.appendChild(currentPage);
                 
                 // Restore cursor position
                 if (activeStream !== null && activeCursor !== null && activeGroup !== null) {
                     const cursorPos = this.findCursorPosition(activeStream, activeCursor, activeGroup);
-                    const targetElement = this.container.querySelector(
+                    const targetElement = pagesContainer.querySelector(
                         `[data-stream-index="${activeStream}"][data-chunk-index="${cursorPos.chunkIndex}"][data-group-index="${activeGroup}"]`
                     );
                     
@@ -1045,7 +1168,9 @@ version: "1.0"
                 const chunkIndex = parseInt(element.dataset.chunkIndex);
                 
                 // Reconstruct the full text for this stream in this group
-                const chunks = Array.from(this.container.querySelectorAll(
+                // Search across all pages
+                const pagesContainer = document.getElementById('pagesContainer');
+                const chunks = Array.from(pagesContainer.querySelectorAll(
                     `[data-stream-index="${streamIndex}"][data-group-index="${groupIndex}"]`
                 ));
                 let absolutePosition = 0;
@@ -1072,7 +1197,8 @@ version: "1.0"
                     if (event.shiftKey) {
                         // Shift+Tab: switch to next voice (cycling down)
                         const nextStreamIndex = (streamIndex + 1) % this.document.streamCount;
-                        const nextElement = this.container.querySelector(
+                        const pagesContainer = document.getElementById('pagesContainer');
+                        const nextElement = pagesContainer.querySelector(
                             `[data-stream-index="${nextStreamIndex}"][data-chunk-index="${chunkIndex}"][data-group-index="${groupIndex}"]`
                         );
                         if (nextElement) {
@@ -1089,10 +1215,12 @@ version: "1.0"
                         // Shift+Enter: move to previous chunk in the same stream
                         let prevElement = null;
                         
+                        const pagesContainer = document.getElementById('pagesContainer');
+                        
                         if (chunkIndex > 0) {
                             // Try to find previous chunk in the same group
                             const prevChunkIndex = chunkIndex - 1;
-                            prevElement = this.container.querySelector(
+                            prevElement = pagesContainer.querySelector(
                                 `[data-stream-index="${streamIndex}"][data-chunk-index="${prevChunkIndex}"][data-group-index="${groupIndex}"]`
                             );
                         } else {
@@ -1100,7 +1228,7 @@ version: "1.0"
                             const prevGroupIndex = groupIndex - 1;
                             if (prevGroupIndex >= 0) {
                                 // Find all chunks in the previous group for this stream
-                                const prevGroupChunks = this.container.querySelectorAll(
+                                const prevGroupChunks = pagesContainer.querySelectorAll(
                                     `[data-stream-index="${streamIndex}"][data-group-index="${prevGroupIndex}"]`
                                 );
                                 // Get the last chunk (highest chunk index)
@@ -1119,16 +1247,17 @@ version: "1.0"
                         // Regular Enter: move to next chunk in the same stream
                         const nextChunkIndex = chunkIndex + 1;
                         let nextElement = null;
+                        const pagesContainer = document.getElementById('pagesContainer');
                         
                         // First try to find next chunk in the same group
-                        nextElement = this.container.querySelector(
+                        nextElement = pagesContainer.querySelector(
                             `[data-stream-index="${streamIndex}"][data-chunk-index="${nextChunkIndex}"][data-group-index="${groupIndex}"]`
                         );
                         
                         // If not found in current group, try next group at chunk 0
                         if (!nextElement) {
                             const nextGroupIndex = groupIndex + 1;
-                            nextElement = this.container.querySelector(
+                            nextElement = pagesContainer.querySelector(
                                 `[data-stream-index="${streamIndex}"][data-chunk-index="0"][data-group-index="${nextGroupIndex}"]`
                             );
                         }
@@ -1175,7 +1304,7 @@ version: "1.0"
         
         // Initialize the editor
         const doc = new MultiStreamDocument(3);
-        const view = new MultiStreamView(document.getElementById('editorArea'), doc);
+        const view = new MultiStreamView(document.getElementById('pagesContainer'), doc);
         
         // Make view available globally for document model to use
         window.view = view;
@@ -1203,15 +1332,7 @@ version: "1.0"
         // Track the last focused text element
         let lastFocusedElement = null;
         
-        // Handle title input
-        const titleInput = document.getElementById('titleInput');
-        titleInput.addEventListener('input', function() {
-            doc.setTitle(this.textContent);
-        });
-        
-        titleInput.addEventListener('focus', function() {
-            // Don't set lastFocusedElement for title, keep it for stream elements
-        });
+        // Title input is now handled dynamically in createTitleArea()
         
         // Global functions for UI
         function undoAction() {
