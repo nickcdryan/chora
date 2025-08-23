@@ -118,7 +118,6 @@
         
         .page {
             width: 900px;
-            height: 600px;
             background: white;
             box-shadow: 0 4px 12px rgba(0,0,0,0.15);
             position: relative;
@@ -130,7 +129,6 @@
             height: 100%;
             overflow: hidden;
             position: relative;
-            padding: 60px 80px;
             box-sizing: border-box;
         }
         
@@ -403,6 +401,37 @@
     </div>
 
     <script>
+        // ===== PAGE CONFIGURATION - ADJUST THESE TO CONTROL LAYOUT =====
+        const PAGE_CONFIG = {
+            HEIGHT: 1000,           // Total page height in pixels
+            MARGIN_TOP: 60,        // Top margin/padding
+            MARGIN_RIGHT: 80,      // Right margin/padding  
+            MARGIN_BOTTOM: 20,     // Bottom margin/padding
+            MARGIN_LEFT: 80,       // Left margin/padding
+            
+            // Calculated values (don't edit these)
+            get USABLE_HEIGHT() {
+                return this.HEIGHT - this.MARGIN_TOP - this.MARGIN_BOTTOM;
+            },
+            get CSS_PADDING() {
+                return `${this.MARGIN_TOP}px ${this.MARGIN_RIGHT}px ${this.MARGIN_BOTTOM}px ${this.MARGIN_LEFT}px`;
+            }
+        };
+        
+        // Apply page configuration to CSS
+        function applyPageConfiguration() {
+            const style = document.createElement('style');
+            style.textContent = `
+                .page {
+                    height: ${PAGE_CONFIG.HEIGHT}px !important;
+                }
+                .page-content {
+                    padding: ${PAGE_CONFIG.CSS_PADDING} !important;
+                }
+            `;
+            document.head.appendChild(style);
+        }
+        
         // Document model - stores the actual text
         class MultiStreamDocument {
             constructor(streamCount = 3) {
@@ -835,11 +864,13 @@ version: "1.0"
                 this.maxLineWidth = 0;
                 this.isUpdating = false;
                 
-                // Page constants - simple chunk-based pagination
-                this.PAGE_HEIGHT = 600;
-                this.MAX_CHUNKS_PER_PAGE = 3; // More conservative with margins: max 3 chunks per page
-                this.TITLE_HEIGHT = 120; // Reduced since we have page margins now
-                this.PARAGRAPH_BREAK_CHUNK_EQUIVALENT = 1; // Paragraph break counts as 1 chunk
+                // Page constants - use centralized config
+                this.PAGE_HEIGHT = PAGE_CONFIG.HEIGHT;
+                this.USABLE_PAGE_HEIGHT = PAGE_CONFIG.USABLE_HEIGHT;
+                this.TITLE_HEIGHT = 120;
+                this.PARAGRAPH_BREAK_HEIGHT = 120; // Height of paragraph break
+                this.STREAM_LINE_HEIGHT = 25.6; // 16px font * 1.6 line-height
+                this.CHUNK_MARGIN = 75; // margin-bottom on stream-chunk
                 
                 this.calculateMaxWidth();
                 this.document.onChange(() => this.render());
@@ -870,6 +901,16 @@ version: "1.0"
             
             measureTitleHeight() {
                 return this.TITLE_HEIGHT;
+            }
+            
+            calculateChunkHeight() {
+                // Each chunk contains one line per voice + margins
+                const streamHeight = this.document.streamCount * this.STREAM_LINE_HEIGHT;
+                return streamHeight + this.CHUNK_MARGIN;
+            }
+            
+            calculateParagraphBreakHeight() {
+                return this.PARAGRAPH_BREAK_HEIGHT;
             }
             
             createTitleArea() {
@@ -995,17 +1036,17 @@ version: "1.0"
                 pagesContainer.innerHTML = '';
                 
                 let currentPage = this.createNewPage();
-                let currentPageHeight = 0;
+                let titlePageHeight = 0;
                 let totalChunks = 0;
                 let isFirstPage = true;
                 
                 // Add title to first page if it exists
                 if (this.document.title && this.document.title.trim()) {
                     const titleHeight = this.measureTitleHeight();
-                    if (currentPageHeight + titleHeight <= this.PAGE_HEIGHT) {
+                    if (titlePageHeight + titleHeight <= this.PAGE_HEIGHT) {
                         const titleArea = this.createTitleArea();
                         currentPage.querySelector('.page-content').appendChild(titleArea);
-                        currentPageHeight += titleHeight;
+                        titlePageHeight += titleHeight;
                     }
                 }
                 
@@ -1048,17 +1089,26 @@ version: "1.0"
                 // Current paragraph group container
                 let currentParagraphGroup = null;
                 let lastGroupIndex = -1;
+                let currentPageHeight = 0;
                 
                 // Process each chunk
                 for (let i = 0; i < allChunks.length; i++) {
                     const chunkData = allChunks[i];
                     
+                    // Calculate height of this item
+                    let itemHeight = 0;
+                    if (chunkData.type === 'paragraph-break') {
+                        itemHeight = this.calculateParagraphBreakHeight();
+                    } else if (chunkData.type === 'content-chunk') {
+                        itemHeight = this.calculateChunkHeight();
+                    }
+                    
                     // Check if we need a new page
-                    if (currentPageChunks >= this.MAX_CHUNKS_PER_PAGE && currentPageChunks > 0) {
+                    if (currentPageHeight + itemHeight > this.USABLE_PAGE_HEIGHT && currentPageHeight > 0) {
                         // Add current page and start new one
                         pagesContainer.appendChild(currentPage);
                         currentPage = this.createNewPage();
-                        currentPageChunks = 0;
+                        currentPageHeight = 0;
                         
                         // Create new editor area
                         currentEditorArea = this.createEditorArea();
@@ -1073,7 +1123,7 @@ version: "1.0"
                         // Create standalone paragraph break
                         const paragraphBreak = this.createStandaloneParagraphBreak(chunkData.groupIndex);
                         currentEditorArea.appendChild(paragraphBreak);
-                        currentPageChunks += this.PARAGRAPH_BREAK_CHUNK_EQUIVALENT;
+                        currentPageHeight += itemHeight;
                         
                     } else if (chunkData.type === 'content-chunk') {
                         // Create or reuse paragraph group (but without break header since we handle breaks separately)
@@ -1097,7 +1147,7 @@ version: "1.0"
                         }
                         
                         currentParagraphGroup.appendChild(chunk);
-                        currentPageChunks++;
+                        currentPageHeight += itemHeight;
                         totalChunks++;
                     }
                 }
@@ -1907,7 +1957,8 @@ version: "1.0"
             }
         });
         
-        // Initialize
+        // Apply page configuration and initialize
+        applyPageConfiguration();
         document.getElementById('streamCount').textContent = doc.streamCount;
         view.render();
     </script>
