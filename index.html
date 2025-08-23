@@ -1040,6 +1040,9 @@ version: "1.0"
                 let totalChunks = 0;
                 let isFirstPage = true;
                 
+                // Track how much height the title uses
+                let titleHeightUsed = 0;
+                
                 // Add title to first page if it exists
                 if (this.document.title && this.document.title.trim()) {
                     const titleHeight = this.measureTitleHeight();
@@ -1047,6 +1050,7 @@ version: "1.0"
                         const titleArea = this.createTitleArea();
                         currentPage.querySelector('.page-content').appendChild(titleArea);
                         titlePageHeight += titleHeight;
+                        titleHeightUsed = titleHeight;
                     }
                 }
                 
@@ -1089,7 +1093,7 @@ version: "1.0"
                 // Current paragraph group container
                 let currentParagraphGroup = null;
                 let lastGroupIndex = -1;
-                let currentPageHeight = 0;
+                let currentPageHeight = titleHeightUsed; // Start with title height if present
                 
                 // Process each chunk
                 for (let i = 0; i < allChunks.length; i++) {
