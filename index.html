@@ -130,10 +130,12 @@
             height: 100%;
             overflow: hidden;
             position: relative;
+            padding: 60px 80px;
+            box-sizing: border-box;
         }
         
         .title-area {
-            padding: 80px 100px 20px 100px;
+            padding: 20px 20px 20px 20px;
         }
         
         .title-input {
@@ -163,9 +165,9 @@
         }
         
         .editor-area {
-            min-height: 500px;
+            min-height: 200px;
             padding: 0;
-            margin: 40px 100px 100px 100px;
+            margin: 20px 0 0 0;
         }
         
         .paragraph-group {
@@ -835,8 +837,9 @@ version: "1.0"
                 
                 // Page constants - simple chunk-based pagination
                 this.PAGE_HEIGHT = 600;
-                this.MAX_CHUNKS_PER_PAGE = 4; // Conservative: max 4 chunks per page
-                this.TITLE_HEIGHT = 180;
+                this.MAX_CHUNKS_PER_PAGE = 3; // More conservative with margins: max 3 chunks per page
+                this.TITLE_HEIGHT = 120; // Reduced since we have page margins now
+                this.PARAGRAPH_BREAK_CHUNK_EQUIVALENT = 1; // Paragraph break counts as 1 chunk
                 
                 this.calculateMaxWidth();
                 this.document.onChange(() => this.render());
@@ -1018,15 +1021,26 @@ version: "1.0"
                 // Build list of all chunks with their metadata
                 for (let groupIndex = 0; groupIndex < this.document.streamGroups.length; groupIndex++) {
                     const group = this.document.streamGroups[groupIndex];
+                    
+                    // Add paragraph break as a special chunk (except for first group)
+                    if (groupIndex > 0) {
+                        allChunks.push({
+                            type: 'paragraph-break',
+                            groupIndex,
+                            chunkIndex: -1, // Special marker for paragraph break
+                            streamLines: null
+                        });
+                    }
+                    
                     const streamLines = group.map(stream => this.breakTextIntoLines(stream));
                     const maxChunks = Math.max(...streamLines.map(lines => lines.length));
                     
                     for (let chunkIndex = 0; chunkIndex < maxChunks; chunkIndex++) {
                         allChunks.push({
+                            type: 'content-chunk',
                             groupIndex,
                             chunkIndex,
-                            streamLines,
-                            isNewParagraph: chunkIndex === 0
+                            streamLines
                         });
                     }
                 }
@@ -1055,29 +1069,37 @@ version: "1.0"
                         lastGroupIndex = -1;
                     }
                     
-                    // Create or reuse paragraph group
-                    if (chunkData.groupIndex !== lastGroupIndex) {
-                        currentParagraphGroup = this.createParagraphGroup(chunkData.groupIndex);
-                        currentEditorArea.appendChild(currentParagraphGroup);
-                        lastGroupIndex = chunkData.groupIndex;
+                    if (chunkData.type === 'paragraph-break') {
+                        // Create standalone paragraph break
+                        const paragraphBreak = this.createStandaloneParagraphBreak(chunkData.groupIndex);
+                        currentEditorArea.appendChild(paragraphBreak);
+                        currentPageChunks += this.PARAGRAPH_BREAK_CHUNK_EQUIVALENT;
+                        
+                    } else if (chunkData.type === 'content-chunk') {
+                        // Create or reuse paragraph group (but without break header since we handle breaks separately)
+                        if (chunkData.groupIndex !== lastGroupIndex) {
+                            currentParagraphGroup = this.createParagraphGroupWithoutBreak(chunkData.groupIndex);
+                            currentEditorArea.appendChild(currentParagraphGroup);
+                            lastGroupIndex = chunkData.groupIndex;
+                        }
+                        
+                        // Create the chunk
+                        const chunk = this.createChunk(totalChunks + 1, chunkData.groupIndex, chunkData.chunkIndex);
+                        
+                        for (let streamIndex = 0; streamIndex < this.document.streamCount; streamIndex++) {
+                            const stream = this.createStream(
+                                streamIndex, 
+                                chunkData.chunkIndex, 
+                                chunkData.streamLines[streamIndex][chunkData.chunkIndex] || '',
+                                chunkData.groupIndex
+                            );
+                            chunk.appendChild(stream);
+                        }
+                        
+                        currentParagraphGroup.appendChild(chunk);
+                        currentPageChunks++;
+                        totalChunks++;
                     }
-                    
-                    // Create the chunk
-                    const chunk = this.createChunk(totalChunks + 1, chunkData.groupIndex, chunkData.chunkIndex);
-                    
-                    for (let streamIndex = 0; streamIndex < this.document.streamCount; streamIndex++) {
-                        const stream = this.createStream(
-                            streamIndex, 
-                            chunkData.chunkIndex, 
-                            chunkData.streamLines[streamIndex][chunkData.chunkIndex] || '',
-                            chunkData.groupIndex
-                        );
-                        chunk.appendChild(stream);
-                    }
-                    
-                    currentParagraphGroup.appendChild(chunk);
-                    currentPageChunks++;
-                    totalChunks++;
                 }
                 
                 // Add the final page
@@ -1127,6 +1149,33 @@ version: "1.0"
                 }
                 
                 return paragraphGroup;
+            }
+            
+            createParagraphGroupWithoutBreak(groupIndex) {
+                const paragraphGroup = document.createElement('div');
+                paragraphGroup.className = 'paragraph-group';
+                paragraphGroup.dataset.groupIndex = groupIndex;
+                return paragraphGroup;
+            }
+            
+            createStandaloneParagraphBreak(groupIndex) {
+                const breakHeader = document.createElement('div');
+                breakHeader.className = 'paragraph-break-header';
+                breakHeader.title = 'Click to remove paragraph break';
+                breakHeader.onclick = () => this.removeParagraphBreakHandler(groupIndex);
+                
+                const symbol = document.createElement('span');
+                symbol.className = 'paragraph-break-symbol';
+                symbol.innerHTML = '§'; // Single section symbol - classic typography
+                
+                const deleteIndicator = document.createElement('span');
+                deleteIndicator.className = 'paragraph-delete-indicator';
+                deleteIndicator.innerHTML = '×';
+                
+                symbol.appendChild(deleteIndicator);
+                breakHeader.appendChild(symbol);
+                
+                return breakHeader;
             }
             
             createChunk(number, groupIndex, localChunkIndex) {
