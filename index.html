@@ -476,6 +476,15 @@
                 this.renderDelay = 50; // Debounce renders for 50ms to batch multiple changes
                 this.pendingRender = false;
                 
+                // Change tracking for incremental updates
+                this.changeTracker = {
+                    dirtyStreams: new Set(), // Track which streams have changed
+                    dirtyGroups: new Set(),  // Track which groups have changed
+                    structureChanged: false, // Track if stream count or group structure changed
+                    titleChanged: false,     // Track if title changed
+                    fullRebuildNeeded: false // Force full rebuild flag
+                };
+                
                 // Save initial state
                 this.saveState();
             }
@@ -488,6 +497,8 @@
                 if (oldText !== text && !this.isUndoRedoing) {
                     this.saveStateDebounced();
                     this.autoSaveDebounced();
+                    // Mark this stream as dirty for incremental updates
+                    this.markStreamDirty(streamIndex, group);
                 }
                 
                 this.streamGroups[group][streamIndex] = text;
@@ -504,6 +515,7 @@
                 if (!this.isUndoRedoing) {
                     this.saveState();
                     this.autoSaveDebounced();
+                    this.markStreamDirty(streamIndex, group);
                 }
                 
                 this.streamGroups[group][streamIndex] = stream.slice(0, position) + text + stream.slice(position);
@@ -520,6 +532,7 @@
                 if (!this.isUndoRedoing) {
                     this.saveState();
                     this.autoSaveDebounced();
+                    this.markStreamDirty(streamIndex, group);
                 }
                 
                 this.streamGroups[group][streamIndex] = stream.slice(0, start) + stream.slice(end);
@@ -533,6 +546,7 @@
                 if (!this.isUndoRedoing) {
                     this.saveState();
                     this.autoSaveDebounced();
+                    this.markStructureChanged();
                 }
                 
                 // Find which group the current chunk belongs to and split there
@@ -636,13 +650,17 @@
             }
             
             setTitle(title) {
-                if (this.title !== title && !this.isUndoRedoing) {
+                const titleChanged = this.title !== title;
+                if (titleChanged && !this.isUndoRedoing) {
                     this.saveStateDebounced();
                     this.autoSaveDebounced();
+                    this.markTitleChanged();
                 }
                 this.title = title;
-                // Don't trigger notifyChange for title updates to avoid re-rendering
-                // Title changes don't affect the stream layout
+                // Title changes trigger minimal re-rendering (just title area)
+                if (titleChanged) {
+                    this.notifyChange();
+                }
             }
             
             onChange(callback) {
@@ -688,6 +706,36 @@
                     this.pendingRender = false;
                     this.listeners.forEach(callback => callback());
                 }
+            }
+            
+            // Change tracking methods
+            markStreamDirty(streamIndex, groupIndex) {
+                this.changeTracker.dirtyStreams.add(`${groupIndex}-${streamIndex}`);
+                this.changeTracker.dirtyGroups.add(groupIndex);
+            }
+            
+            markStructureChanged() {
+                this.changeTracker.structureChanged = true;
+                this.changeTracker.fullRebuildNeeded = true;
+            }
+            
+            markTitleChanged() {
+                this.changeTracker.titleChanged = true;
+            }
+            
+            clearChangeTracker() {
+                this.changeTracker.dirtyStreams.clear();
+                this.changeTracker.dirtyGroups.clear();
+                this.changeTracker.structureChanged = false;
+                this.changeTracker.titleChanged = false;
+                this.changeTracker.fullRebuildNeeded = false;
+            }
+            
+            hasChanges() {
+                return this.changeTracker.dirtyStreams.size > 0 || 
+                       this.changeTracker.structureChanged || 
+                       this.changeTracker.titleChanged ||
+                       this.changeTracker.fullRebuildNeeded;
             }
             
             // History management methods
@@ -789,6 +837,9 @@
                 this.activeCursor = state.activeCursor;
                 this.activeGroup = state.activeGroup;
                 this.title = state.title;
+                
+                // Mark for full rebuild since undo/redo can change anything
+                this.changeTracker.fullRebuildNeeded = true;
                 
                 // Update UI elements
                 document.getElementById('titleInput').textContent = this.title;
@@ -1096,6 +1147,31 @@ version: "1.0"
                 const activeCursor = this.document.activeCursor;
                 const activeGroup = this.document.activeGroup;
                 
+                // Decide whether to do incremental or full render
+                if (this.document.changeTracker.fullRebuildNeeded || 
+                    this.document.changeTracker.structureChanged ||
+                    !this.hasExistingDOM()) {
+                    this.renderFull();
+                } else {
+                    this.renderIncremental();
+                }
+                
+                // Clear change tracker after rendering
+                this.document.clearChangeTracker();
+                this.isUpdating = false;
+            }
+            
+            hasExistingDOM() {
+                const pagesContainer = document.getElementById('pagesContainer');
+                return pagesContainer && pagesContainer.children.length > 0;
+            }
+            
+            renderFull() {
+                // Original full render logic
+                const activeStream = this.document.activeStream;
+                const activeCursor = this.document.activeCursor;
+                const activeGroup = this.document.activeGroup;
+                
                 // Clear and rebuild pages container
                 const pagesContainer = document.getElementById('pagesContainer');
                 pagesContainer.innerHTML = '';
@@ -1236,7 +1312,80 @@ version: "1.0"
                 }
                 
                 document.getElementById('chunkCount').textContent = totalChunks;
-                this.isUpdating = false;
+            }
+            
+            renderIncremental() {
+                // Incremental update logic - only update what changed
+                const activeStream = this.document.activeStream;
+                const activeCursor = this.document.activeCursor;
+                const activeGroup = this.document.activeGroup;
+                const pagesContainer = document.getElementById('pagesContainer');
+                
+                // Handle title changes
+                if (this.document.changeTracker.titleChanged) {
+                    const titleInput = document.getElementById('titleInput');
+                    if (titleInput && titleInput.textContent !== this.document.title) {
+                        titleInput.textContent = this.document.title;
+                    }
+                }
+                
+                // Handle dirty streams - update only the text content of changed streams
+                if (this.document.changeTracker.dirtyStreams.size > 0) {
+                    for (const dirtyKey of this.document.changeTracker.dirtyStreams) {
+                        const [groupIndex, streamIndex] = dirtyKey.split('-').map(Number);
+                        this.updateStreamContent(streamIndex, groupIndex);
+                    }
+                }
+                
+                // Restore cursor position if needed
+                if (activeStream !== null && activeCursor !== null && activeGroup !== null) {
+                    const cursorPos = this.findCursorPosition(activeStream, activeCursor, activeGroup);
+                    const targetElement = pagesContainer.querySelector(
+                        `[data-stream-index="${activeStream}"][data-chunk-index="${cursorPos.chunkIndex}"][data-group-index="${activeGroup}"]`
+                    );
+                    
+                    if (targetElement && document.activeElement !== targetElement) {
+                        targetElement.focus();
+                        this.setCursor(targetElement, cursorPos.localPosition);
+                    }
+                }
+            }
+            
+            updateStreamContent(streamIndex, groupIndex) {
+                // Update the text content of a specific stream across all its chunks
+                const pagesContainer = document.getElementById('pagesContainer');
+                const streamElements = Array.from(pagesContainer.querySelectorAll(
+                    `[data-stream-index="${streamIndex}"][data-group-index="${groupIndex}"]`
+                ));
+                
+                if (streamElements.length === 0) {
+                    // Stream doesn't exist in DOM, might need a full rebuild
+                    this.document.changeTracker.fullRebuildNeeded = true;
+                    return;
+                }
+                
+                // Get the current text for this stream
+                const currentText = this.document.streamGroups[groupIndex][streamIndex] || '';
+                const lines = this.breakTextIntoLines(currentText);
+                
+                // Update each chunk with its corresponding line
+                streamElements.forEach((element, index) => {
+                    const chunkIndex = parseInt(element.dataset.chunkIndex);
+                    const newText = lines[chunkIndex] || '';
+                    
+                    if (element.textContent !== newText) {
+                        const wasFocused = document.activeElement === element;
+                        const cursorPos = wasFocused ? this.getCursorPosition(element) : 0;
+                        
+                        element.textContent = newText;
+                        
+                        // Restore cursor if this element was focused
+                        if (wasFocused) {
+                            element.focus();
+                            this.setCursor(element, Math.min(cursorPos, newText.length));
+                        }
+                    }
+                });
             }
             
             createParagraphGroup(groupIndex) {
@@ -1475,6 +1624,10 @@ version: "1.0"
         
         // Make view available globally for document model to use
         window.view = view;
+        
+        // Force initial render to ensure DOM structure exists
+        doc.changeTracker.fullRebuildNeeded = true;
+        doc.notifyChangeImmediate();
         
         // Add page visibility handler to flush pending renders when tab becomes hidden
         document.addEventListener('visibilitychange', function() {
@@ -1793,11 +1946,22 @@ version: "1.0"
             doc.activeCursor = 0;
             doc.activeGroup = 0;
             
-            // Update title input
-            document.getElementById('titleInput').textContent = doc.title;
-            
-            document.getElementById('streamCount').textContent = streamCount;
+            // Force full rebuild and immediate rendering for file loading
+            doc.changeTracker.fullRebuildNeeded = true;
             doc.notifyChangeImmediate(); // Use immediate rendering for file loading
+            
+            // Update UI elements after DOM is rendered
+            setTimeout(() => {
+                const titleInput = document.getElementById('titleInput');
+                if (titleInput) {
+                    titleInput.textContent = doc.title;
+                }
+                
+                const streamCountElement = document.getElementById('streamCount');
+                if (streamCountElement) {
+                    streamCountElement.textContent = streamCount;
+                }
+            }, 0);
         }
         
         function exportHtml() {
@@ -2476,13 +2640,20 @@ version: "1.0"
                 doc.activeCursor = 0;
                 doc.activeGroup = 0;
                 
-                // Clear title input
-                document.getElementById('titleInput').textContent = '';
+                // Force full rebuild and immediate rendering for clearing all content
+                doc.changeTracker.fullRebuildNeeded = true;
+                doc.notifyChangeImmediate(); // Use immediate rendering for clearing all content
+                
+                // Update UI elements after DOM is rendered
+                setTimeout(() => {
+                    const titleInput = document.getElementById('titleInput');
+                    if (titleInput) {
+                        titleInput.textContent = '';
+                    }
+                }, 0);
                 
                 // Clear auto-save as well
                 doc.clearAutoSave();
-                
-                doc.notifyChangeImmediate(); // Use immediate rendering for clearing all content
             }
         }
         
