@@ -1061,15 +1061,13 @@ version: "1.0"
                 // Track how much height the title uses
                 let titleHeightUsed = 0;
                 
-                // Add title to first page if it exists
-                if (this.document.title && this.document.title.trim()) {
-                    const titleHeight = this.measureTitleHeight();
-                    if (titlePageHeight + titleHeight <= this.PAGE_HEIGHT) {
-                        const titleArea = this.createTitleArea();
-                        currentPage.querySelector('.page-content').appendChild(titleArea);
-                        titlePageHeight += titleHeight;
-                        titleHeightUsed = titleHeight;
-                    }
+                // Add title area to first page (always visible for user input)
+                const titleHeight = this.measureTitleHeight();
+                if (titlePageHeight + titleHeight <= this.PAGE_HEIGHT) {
+                    const titleArea = this.createTitleArea();
+                    currentPage.querySelector('.page-content').appendChild(titleArea);
+                    titlePageHeight += titleHeight;
+                    titleHeightUsed = titleHeight;
                 }
                 
                 // Create editor area on current page
@@ -2300,13 +2298,13 @@ version: "1.0"
                 pdfWindow.focus();
                 
                 // Show instructions for clean printing  
-                const instructions = 'IMPORTANT - To Remove Headers/Footers:\\n\\n' +
-                    '1. In the print dialog that opens, click "More settings"\\n' +
-                    '2. UNCHECK "Headers and footers" (this removes date, title, page numbers, and "about:blank")\\n' +
-                    '3. Choose "Save as PDF"\\n\\n' +
-                    'If you dont see "More settings", look for "Options" or "Advanced".\\n\\n' +
-                    'Click OK to open the print dialog.';
-                alert(instructions);
+                // const instructions = 'IMPORTANT - To Remove Headers/Footers:\\n\\n' +
+                //     '1. In the print dialog that opens, click "More settings"\\n' +
+                //     '2. UNCHECK "Headers and footers" (this removes date, title, page numbers, and "about:blank")\\n' +
+                //     '3. Choose "Save as PDF"\\n\\n' +
+                //     'If you dont see "More settings", look for "Options" or "Advanced".\\n\\n' +
+                //     'Click OK to open the print dialog.';
+                // alert(instructions);
                 
                 pdfWindow.print();
                 
