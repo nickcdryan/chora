@@ -15,6 +15,7 @@
         .container {
             max-width: 900px;
             margin: 0 auto;
+            padding: 0 20px;
         }
         
         .toolbar {
@@ -117,7 +118,8 @@
         }
         
         .page {
-            width: 900px;
+            max-width: 900px;
+            width: 100%;
             background: white;
             box-shadow: 0 4px 12px rgba(0,0,0,0.15);
             position: relative;
@@ -882,8 +884,17 @@ version: "1.0"
             }
             
             calculateMaxWidth() {
-                // Account for page width and padding
-                this.maxLineWidth = 900 - 200; // 900px page width - 100px left/right padding
+                // Calculate based on actual container width
+                const container = document.querySelector('.container');
+                if (container) {
+                    // Get actual container width, accounting for padding
+                    const containerWidth = container.offsetWidth - 40; // 40px total padding (20px each side)
+                    const pageWidth = Math.min(containerWidth, 900); // Max 900px
+                    this.maxLineWidth = pageWidth - (PAGE_CONFIG.MARGIN_LEFT + PAGE_CONFIG.MARGIN_RIGHT);
+                } else {
+                    // Fallback to original calculation
+                    this.maxLineWidth = 900 - 200;
+                }
             }
             
             createNewPage() {
