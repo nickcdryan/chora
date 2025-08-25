@@ -471,6 +471,11 @@
                 this.autoSaveDelay = 2000; // Auto-save after 2 seconds of inactivity
                 this.lastAutoSaveTime = null;
                 
+                // Debounced rendering system
+                this.renderTimeout = null;
+                this.renderDelay = 50; // Debounce renders for 50ms to batch multiple changes
+                this.pendingRender = false;
+                
                 // Save initial state
                 this.saveState();
             }
@@ -645,7 +650,44 @@
             }
             
             notifyChange() {
+                this.notifyChangeDebounced();
+            }
+            
+            notifyChangeDebounced() {
+                // Clear existing render timeout
+                if (this.renderTimeout) {
+                    clearTimeout(this.renderTimeout);
+                }
+                
+                // Mark that we have a pending render
+                this.pendingRender = true;
+                
+                // Set new timeout for debounced rendering
+                this.renderTimeout = setTimeout(() => {
+                    this.listeners.forEach(callback => callback());
+                    this.pendingRender = false;
+                    this.renderTimeout = null;
+                }, this.renderDelay);
+            }
+            
+            notifyChangeImmediate() {
+                // For cases where we need immediate rendering (e.g., undo/redo, loading)
+                if (this.renderTimeout) {
+                    clearTimeout(this.renderTimeout);
+                    this.renderTimeout = null;
+                }
+                this.pendingRender = false;
                 this.listeners.forEach(callback => callback());
+            }
+            
+            flushPendingRender() {
+                // Force any pending render to execute immediately
+                if (this.pendingRender && this.renderTimeout) {
+                    clearTimeout(this.renderTimeout);
+                    this.renderTimeout = null;
+                    this.pendingRender = false;
+                    this.listeners.forEach(callback => callback());
+                }
             }
             
             // History management methods
@@ -752,8 +794,8 @@
                 document.getElementById('titleInput').textContent = this.title;
                 document.getElementById('streamCount').textContent = this.streamCount;
                 
-                // Trigger re-render
-                this.notifyChange();
+                // Trigger immediate re-render for undo/redo
+                this.notifyChangeImmediate();
             }
             
             updateUndoRedoButtons() {
@@ -1280,6 +1322,10 @@ version: "1.0"
                 stream.addEventListener('focus', (e) => {
                     lastFocusedElement = e.target;
                 });
+                stream.addEventListener('blur', (e) => {
+                    // Flush any pending renders when user stops editing
+                    this.document.flushPendingRender();
+                });
                 
                 return stream;
             }
@@ -1429,6 +1475,13 @@ version: "1.0"
         
         // Make view available globally for document model to use
         window.view = view;
+        
+        // Add page visibility handler to flush pending renders when tab becomes hidden
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden) {
+                doc.flushPendingRender();
+            }
+        });
         
         // Check for auto-saved work on page load
         function checkForAutoSavedWork() {
@@ -1744,7 +1797,7 @@ version: "1.0"
             document.getElementById('titleInput').textContent = doc.title;
             
             document.getElementById('streamCount').textContent = streamCount;
-            doc.notifyChange();
+            doc.notifyChangeImmediate(); // Use immediate rendering for file loading
         }
         
         function exportHtml() {
@@ -2429,7 +2482,7 @@ version: "1.0"
                 // Clear auto-save as well
                 doc.clearAutoSave();
                 
-                doc.notifyChange();
+                doc.notifyChangeImmediate(); // Use immediate rendering for clearing all content
             }
         }
         
