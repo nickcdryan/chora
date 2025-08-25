@@ -375,6 +375,13 @@
                         <path d="M8 1c1.8 0 3.2 3 3.2 7s-1.4 7-3.2 7-3.2-3-3.2-7 1.4-7 3.2-7z" stroke="#74a9d8" stroke-width="1"/>
                     </svg>
                 </button>
+                <button class="btn" onclick="exportPdf()" data-tooltip="Export PDF">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                        <path d="M13 15H3a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h7l4 4v9a1 1 0 0 1-1 1z" stroke="#74a9d8" stroke-width="1.5"/>
+                        <path d="M11 1v4H5V1" stroke="#74a9d8" stroke-width="1.5"/>
+                        <path d="M3 8h10M3 11h7" stroke="#74a9d8" stroke-width="1.5"/>
+                    </svg>
+                </button>
                 <button class="btn" onclick="clearAll()" data-tooltip="Clear All">
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                         <path d="M3 5v9a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V5M1 5h14M5 5V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" stroke="#74a9d8" stroke-width="1.5"/>
@@ -405,7 +412,7 @@
     <script>
         // ===== PAGE CONFIGURATION - ADJUST THESE TO CONTROL LAYOUT =====
         const PAGE_CONFIG = {
-            HEIGHT: 1000,           // Total page height in pixels
+            HEIGHT: 1400,           // Total page height in pixels
             MARGIN_TOP: 60,        // Top margin/padding
             MARGIN_RIGHT: 80,      // Right margin/padding  
             MARGIN_BOTTOM: 10,     // Bottom margin/padding
@@ -1811,7 +1818,7 @@ version: "1.0"
         
         .stream {
             min-height: 30px;
-            padding: 0px 0px 0px 15px;
+            padding: 0px 0px 0px 0px;
             margin-bottom: -4px;
             font-family: Georgia, serif;
             font-size: 16px; 
@@ -1821,7 +1828,6 @@ version: "1.0"
             width: 100%;
             color: black;
             font-style: normal;
-            border-left: 3px solid rgba(233, 233, 233, 0.3);
         }
         
         .stream-0, .stream-1, .stream-2, .stream-3, .stream-4 { 
@@ -1999,6 +2005,316 @@ version: "1.0"
             a.download = `${title.replace(/[^a-z0-9]/gi, '_')}.html`;
             a.click();
             URL.revokeObjectURL(url);
+        }
+        
+        function exportPdf() {
+            const title = doc.title || 'Multi-Voice Story';
+            
+            // Create a new window with PDF-optimized HTML
+            const pdfWindow = window.open('', '_blank');
+            
+            // Generate HTML specifically optimized for PDF printing
+            const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${title}</title>
+    <style>
+        @page {
+            size: 8.5in 11in;
+            margin: 0.75in;
+            @top-left { content: ""; }
+            @top-center { content: ""; }
+            @top-right { content: ""; }
+            @bottom-left { content: ""; }
+            @bottom-center { content: ""; }
+            @bottom-right { content: ""; }
+        }
+        
+        @media print {
+            @page {
+                margin: 0.75in;
+                size: 8.5in 11in;
+                @top-left { content: ""; }
+                @top-center { content: ""; }
+                @top-right { content: ""; }
+                @bottom-left { content: ""; }
+                @bottom-center { content: ""; }
+                @bottom-right { content: ""; }
+            }
+            
+            body {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+                margin: 0;
+                padding: 0;
+            }
+            
+            html {
+                margin: 0;
+                padding: 0;
+            }
+        }
+        
+        body {
+            font-family: Georgia, serif;
+            margin: 0;
+            padding: 0;
+            background: white;
+            color: black;
+            line-height: 1.6;
+            font-size: 12pt;
+        }
+        
+        .page {
+            width: 100%;
+            background: white;
+            position: relative;
+            padding: 0;
+            height: auto;
+            page-break-after: always;
+            box-sizing: border-box;
+            min-height: calc(11in - 1.5in);
+        }
+        
+        .page:last-child {
+            page-break-after: avoid;
+        }
+        
+        .title-area {
+            padding: 20px 20px 40px 20px;
+        }
+        
+        .title {
+            font-family: Georgia, serif;
+            font-size: 24pt;
+            font-weight: bold;
+            text-align: center;
+            color: #2c3e50;
+            padding: 20px 0;
+            margin-bottom: 20px;
+        }
+        
+        .editor-area {
+            min-height: 200px;
+            padding: 0;
+            margin: 20px 0 0 0;
+        }
+        
+        .paragraph-group {
+            position: relative;
+        }
+        
+        .paragraph-break-header {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 40px 0 30px 0;
+            padding: 15px;
+        }
+        
+        .paragraph-break-symbol {
+            font-size: 18pt;
+            color: #999;
+            font-family: Georgia, serif;
+        }
+        
+        .stream-chunk {
+            position: relative;
+            margin-bottom: 60px;
+            page-break-inside: avoid;
+        }
+        
+        .stream {
+            min-height: 24px;
+            padding: 0px 0px 0px 0px;
+            margin-bottom: -3px;
+            font-family: Georgia, serif;
+            font-size: 12pt;
+            line-height: 1.5;
+            background: transparent;
+            white-space: nowrap;
+            width: 100%;
+            color: black;
+            font-style: normal;
+        }
+        
+        .stream-0, .stream-1, .stream-2, .stream-3, .stream-4 { 
+            color: black; 
+            font-style: normal;
+        }
+        
+        /* Prevent page breaks inside chunks */
+        .stream-chunk {
+            break-inside: avoid;
+        }
+        
+        /* Ensure paragraph breaks stay with following content */
+        .paragraph-break-header {
+            break-after: avoid;
+        }
+    </style>
+</head>
+<body>
+`;
+            
+            // Use the same pagination logic but optimized for PDF
+            let currentPageContent = '';
+            let titlePageHeight = 0;
+            let titleHeightUsed = 0;
+            
+            // Start first page
+            let pdfHtml = html;
+            pdfHtml += '    <div class="page">\n';
+            
+            // Add title to first page if it exists
+            if (doc.title && doc.title.trim()) {
+                const titleHeight = view.measureTitleHeight();
+                if (titlePageHeight + titleHeight <= PAGE_CONFIG.HEIGHT) {
+                    pdfHtml += '        <div class="title-area">\n';
+                    pdfHtml += `            <div class="title">${title}</div>\n`;
+                    pdfHtml += '        </div>\n';
+                    titlePageHeight += titleHeight;
+                    titleHeightUsed = titleHeight;
+                }
+            }
+            
+            // Add editor area
+            pdfHtml += '        <div class="editor-area">\n';
+            
+            // Build list of all chunks with their metadata (same as HTML export)
+            const allChunks = [];
+            
+            for (let groupIndex = 0; groupIndex < doc.streamGroups.length; groupIndex++) {
+                const group = doc.streamGroups[groupIndex];
+                
+                // Add paragraph break as a special chunk (except for first group)
+                if (groupIndex > 0) {
+                    allChunks.push({
+                        type: 'paragraph-break',
+                        groupIndex,
+                        chunkIndex: -1,
+                        streamLines: null
+                    });
+                }
+                
+                const streamLines = group.map(stream => view.breakTextIntoLines(stream));
+                const maxChunks = Math.max(...streamLines.map(lines => lines.length));
+                
+                for (let chunkIndex = 0; chunkIndex < maxChunks; chunkIndex++) {
+                    allChunks.push({
+                        type: 'content-chunk',
+                        groupIndex,
+                        chunkIndex,
+                        streamLines
+                    });
+                }
+            }
+            
+            // Process each chunk with pagination
+            let currentParagraphGroup = null;
+            let lastGroupIndex = -1;
+            let currentPageHeight = titleHeightUsed;
+            
+            for (let i = 0; i < allChunks.length; i++) {
+                const chunkData = allChunks[i];
+                
+                // Calculate height of this item
+                let itemHeight = 0;
+                if (chunkData.type === 'paragraph-break') {
+                    itemHeight = view.calculateParagraphBreakHeight();
+                } else if (chunkData.type === 'content-chunk') {
+                    itemHeight = view.calculateChunkHeight();
+                }
+                
+                // Check if we need a new page
+                if (currentPageHeight + itemHeight > view.USABLE_PAGE_HEIGHT && currentPageHeight > 0) {
+                    // Close current paragraph group if needed
+                    if (currentParagraphGroup !== null) {
+                        pdfHtml += '            </div>\n'; // close paragraph-group
+                    }
+                    
+                    // Close current page
+                    pdfHtml += '        </div>\n'; // close editor-area
+                    pdfHtml += '    </div>\n'; // close page
+                    
+                    // Start new page
+                    pdfHtml += '    <div class="page">\n';
+                    pdfHtml += '        <div class="editor-area">\n';
+                    
+                    currentPageHeight = 0;
+                    currentParagraphGroup = null;
+                    lastGroupIndex = -1;
+                }
+                
+                if (chunkData.type === 'paragraph-break') {
+                    // Create standalone paragraph break
+                    pdfHtml += '            <div class="paragraph-break-header">\n';
+                    pdfHtml += '                <span class="paragraph-break-symbol">§</span>\n';
+                    pdfHtml += '            </div>\n';
+                    currentPageHeight += itemHeight;
+                    
+                } else if (chunkData.type === 'content-chunk') {
+                    // Create or reuse paragraph group
+                    if (chunkData.groupIndex !== lastGroupIndex) {
+                        if (currentParagraphGroup !== null) {
+                            pdfHtml += '            </div>\n'; // close previous paragraph-group
+                        }
+                        pdfHtml += '            <div class="paragraph-group">\n';
+                        currentParagraphGroup = chunkData.groupIndex;
+                        lastGroupIndex = chunkData.groupIndex;
+                    }
+                    
+                    // Create the chunk
+                    pdfHtml += '                <div class="stream-chunk">\n';
+                    
+                    for (let streamIndex = 0; streamIndex < doc.streamCount; streamIndex++) {
+                        const line = chunkData.streamLines[streamIndex][chunkData.chunkIndex] || '';
+                        pdfHtml += `                    <div class="stream stream-${streamIndex}">${line}</div>\n`;
+                    }
+                    
+                    pdfHtml += '                </div>\n';
+                    currentPageHeight += itemHeight;
+                }
+            }
+            
+            // Close final paragraph group if needed
+            if (currentParagraphGroup !== null) {
+                pdfHtml += '            </div>\n'; // close final paragraph-group
+            }
+            
+            // Close final page
+            pdfHtml += '        </div>\n'; // close editor-area
+            pdfHtml += '    </div>\n'; // close page
+            
+            pdfHtml += '</body>\n</html>';
+            
+            // Write the HTML to the new window
+            pdfWindow.document.write(pdfHtml);
+            pdfWindow.document.close();
+            
+            // Wait for content to load, then trigger print dialog
+            setTimeout(() => {
+                pdfWindow.focus();
+                
+                // Show instructions for clean printing  
+                const instructions = 'IMPORTANT - To Remove Headers/Footers:\\n\\n' +
+                    '1. In the print dialog that opens, click "More settings"\\n' +
+                    '2. UNCHECK "Headers and footers" (this removes date, title, page numbers, and "about:blank")\\n' +
+                    '3. Choose "Save as PDF"\\n\\n' +
+                    'If you dont see "More settings", look for "Options" or "Advanced".\\n\\n' +
+                    'Click OK to open the print dialog.';
+                alert(instructions);
+                
+                pdfWindow.print();
+                
+                // Optional: Close the window after printing (uncomment if desired)
+                // setTimeout(() => {
+                //     pdfWindow.close();
+                // }, 1000);
+            }, 500);
         }
         
         function exportLatex() {
