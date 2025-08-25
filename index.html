@@ -486,7 +486,7 @@
                 };
                 
                 // Virtual chunking system for performance
-                this.virtualChunkSize = 600; // Maximum characters per virtual chunk
+                this.virtualChunkSize = 160; // Maximum characters per virtual chunk
                 this.virtualChunks = new Map(); // Key: "groupIndex-streamIndex", Value: array of chunks
                 
                 // Save initial state
@@ -1198,31 +1198,16 @@ version: "1.0"
             }
             
             breakTextIntoLinesOptimized(text, streamIndex, groupIndex) {
-                const startTime = performance.now();
                 const cacheKey = `${groupIndex}-${streamIndex}`;
                 const streamCache = this.streamLineCache.get(cacheKey);
-                
-                // Debug logging
-                console.log(`[DEBUG] breakTextIntoLinesOptimized: text.length=${text.length}, cache=${!!streamCache}`);
                 
                 // Check if we have a recent cache entry for this stream
                 if (streamCache && Math.abs(streamCache.textLength - text.length) <= 10) {
                     // Small change - try to reuse cache with incremental update
-                    const lengthDiff = Math.abs(streamCache.textLength - text.length);
-                    console.log(`[DEBUG] Using cache hit! Length diff: ${lengthDiff}`);
-                    
-                    const cacheStartTime = performance.now();
-                    const result = this.updateStreamLinesIncrementally(text, streamCache, cacheKey);
-                    const cacheEndTime = performance.now();
-                    
-                    const endTime = performance.now();
-                    console.log(`[DEBUG] updateStreamLinesIncrementally took: ${cacheEndTime - cacheStartTime}ms`);
-                    console.log(`[DEBUG] Total cache hit took: ${endTime - startTime}ms`);
-                    return result;
+                    return this.updateStreamLinesIncrementally(text, streamCache, cacheKey);
                 }
                 
                 // Large change or no cache - compute fresh lines
-                console.log(`[DEBUG] Cache miss - computing fresh lines. Virtual chunking: ${this.document.shouldUseVirtualChunking(text)}`);
                 const lines = this.document.shouldUseVirtualChunking(text) 
                     ? this.computeVirtualChunkedLines(text)
                     : this.computeTextLines(text);
@@ -1234,35 +1219,24 @@ version: "1.0"
                     version: ++this.cacheVersion
                 });
                 
-                const endTime = performance.now();
-                console.log(`[DEBUG] Fresh computation took: ${endTime - startTime}ms`);
                 return lines;
             }
             
             updateStreamLinesIncrementally(newText, streamCache, cacheKey) {
-                console.log(`[DEBUG] updateStreamLinesIncrementally: attempting fast path`);
-                
                 // For very small changes (1-3 characters), just return cached lines
                 // This is the true "fast path" - no computation at all
                 const lengthDiff = Math.abs(newText.length - streamCache.textLength);
                 if (lengthDiff <= 3) {
-                    console.log(`[DEBUG] Ultra-fast path: using cached lines directly (diff: ${lengthDiff})`);
-                    
                     // Update cache with new text length but keep lines
                     // This is an approximation but should be close enough for small edits
-                    this.streamLineCache.set(cacheKey, {
-                        lines: [...streamCache.lines], // Reuse existing lines
-                        textLength: newText.length,
-                        version: ++this.cacheVersion
-                    });
+                    streamCache.textLength = newText.length; // Direct update for speed
+                    streamCache.version = ++this.cacheVersion;
                     
-                    return [...streamCache.lines];
+                    return streamCache.lines; // Return reference, no copy needed
                 }
                 
                 // For medium changes, do minimal recomputation
                 if (lengthDiff <= 10) {
-                    console.log(`[DEBUG] Medium change: doing minimal recomputation`);
-                    
                     // Only recompute if we really need to
                     const lines = this.document.shouldUseVirtualChunking(newText)
                         ? this.computeVirtualChunkedLines(newText)
@@ -1270,7 +1244,7 @@ version: "1.0"
                     
                     // Update cache
                     this.streamLineCache.set(cacheKey, {
-                        lines: [...lines],
+                        lines: lines, // No copy needed here
                         textLength: newText.length,
                         version: ++this.cacheVersion
                     });
@@ -1279,7 +1253,6 @@ version: "1.0"
                 }
                 
                 // Large change - fallback to full computation
-                console.log(`[DEBUG] Large change: falling back to full computation`);
                 return this.breakTextIntoLines(newText);
             }
             
@@ -1812,7 +1785,6 @@ version: "1.0"
             handleInputOptimized(event, streamIndex, groupIndex, chunkIndex) {
                 if (this.isUpdating) return;
                 
-                console.log(`[DEBUG] handleInputOptimized called for stream ${streamIndex}, group ${groupIndex}`);
                 const element = event.target;
                 const cursorPos = this.getCursorPosition(element);
                 const chunkIndexNum = parseInt(chunkIndex);
