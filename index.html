@@ -345,7 +345,7 @@
                         <path d="M2 4h12M2 8h12M2 12h12" stroke="#74a9d8" stroke-width="1.5" stroke-linecap="round"/>
                     </svg>
                 </button>
-                <button class="btn" onclick="insertParagraphBreak()" data-tooltip="Paragraph Break">
+                <button class="btn" onclick="insertParagraphBreak()" data-tooltip="Paragraph Break (Ctrl+Shift+P)">
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                         <path d="M12 2v12M13.5 2H5a2 2 0 0 0-2 2v0a2 2 0 0 0 2 2h3M8 2v12" stroke="#74a9d8" stroke-width="1.5" stroke-linecap="round"/>
                     </svg>
@@ -1413,11 +1413,8 @@ version: "1.0"
             }
             
             removeParagraphBreakHandler(groupIndex) {
-                // Confirm before removing
-                if (confirm('Remove this paragraph break? The content will be merged with the paragraph above.')) {
-                    // Remove the paragraph break (merge with previous group)
-                    this.document.removeParagraphBreak(groupIndex - 1);
-                }
+                // Remove the paragraph break (merge with previous group)
+                this.document.removeParagraphBreak(groupIndex - 1);
             }
         }
         
@@ -1480,12 +1477,32 @@ version: "1.0"
             const targetElement = lastFocusedElement;
             const chunkIndex = parseInt(targetElement.dataset.chunkIndex);
             const groupIndex = parseInt(targetElement.dataset.groupIndex);
+            const streamIndex = parseInt(targetElement.dataset.streamIndex);
             
             // Set the active group to the current group
             doc.activeGroup = groupIndex;
             
             // Insert paragraph break at the end of this chunk
             doc.insertParagraphBreak(chunkIndex);
+            
+            // After render completes, focus the first chunk of the new paragraph group
+            setTimeout(() => {
+                const pagesContainer = document.getElementById('pagesContainer');
+                const newGroupFirstChunk = pagesContainer.querySelector(
+                    `[data-stream-index="${streamIndex}"][data-chunk-index="0"][data-group-index="${groupIndex + 1}"]`
+                );
+                
+                if (newGroupFirstChunk) {
+                    newGroupFirstChunk.focus();
+                    view.setCursor(newGroupFirstChunk, 0);
+                    lastFocusedElement = newGroupFirstChunk;
+                    
+                    // Update document's active position to match
+                    doc.activeGroup = groupIndex + 1;
+                    doc.activeStream = streamIndex;
+                    doc.activeCursor = 0;
+                }
+            }, 10);
         }
         
         function changeStreamCount() {
@@ -2424,6 +2441,10 @@ version: "1.0"
                 // Cmd+Y / Ctrl+Y or Cmd+Shift+Z / Ctrl+Shift+Z - Redo
                 event.preventDefault();
                 doc.redo();
+            } else if (event.ctrlKey && event.shiftKey && event.key === 'P') {
+                // Ctrl+Shift+P - Insert Paragraph Break
+                event.preventDefault();
+                insertParagraphBreak();
             }
         });
         
