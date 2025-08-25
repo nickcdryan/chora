@@ -1723,7 +1723,7 @@ version: "1.0"
         function exportHtml() {
             const title = doc.title || 'Multi-Voice Story';
             
-            // Generate HTML similar to our display format
+            // Generate HTML with page breaks matching the editor's pagination
             let html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1739,16 +1739,35 @@ version: "1.0"
             line-height: 1.6;
         }
         
-        .container {
+        .pages-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 30px;
+            padding: 20px 0;
+        }
+        
+        .page {
             max-width: 900px;
-            margin: 0 auto;
+            width: 100%;
             background: white;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-            padding-bottom: 100px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            position: relative;
+            padding: 0;
+            overflow: visible;
+            min-height: ${PAGE_CONFIG.HEIGHT}px;
+        }
+        
+        .page-content {
+            min-height: 100%;
+            overflow: visible;
+            position: relative;
+            box-sizing: border-box;
+            padding: ${PAGE_CONFIG.CSS_PADDING};
         }
         
         .title-area {
-            padding: 80px 100px 20px 100px;
+            padding: 20px 20px 40px 20px;
         }
         
         .title {
@@ -1760,17 +1779,17 @@ version: "1.0"
             padding: 20px 0;
         }
         
-        .content-area {
-            min-height: 500px;
+        .editor-area {
+            min-height: 200px;
             padding: 0;
-            margin: 40px 100px 100px 100px;
+            margin: 20px 0 0 0;
         }
         
         .paragraph-group {
             position: relative;
         }
         
-        .paragraph-break {
+        .paragraph-break-header {
             position: relative;
             display: flex;
             align-items: center;
@@ -1792,8 +1811,8 @@ version: "1.0"
         
         .stream {
             min-height: 30px;
-            padding: 0px 0px 0px 0px;
-            margin-bottom: -7px;
+            padding: 0px 0px 0px 15px;
+            margin-bottom: -4px;
             font-family: Georgia, serif;
             font-size: 16px; 
             line-height: 1.6;
@@ -1802,52 +1821,174 @@ version: "1.0"
             width: 100%;
             color: black;
             font-style: normal;
+            border-left: 3px solid rgba(233, 233, 233, 0.3);
         }
         
         .stream-0, .stream-1, .stream-2, .stream-3, .stream-4 { 
             color: black; 
             font-style: normal;
         }
+        
+        @media print {
+            .page {
+                page-break-after: always;
+                box-shadow: none;
+                margin: 0;
+                height: ${PAGE_CONFIG.HEIGHT}px;
+                overflow: hidden;
+            }
+            .page-content {
+                height: 100%;
+                overflow: hidden;
+            }
+            .pages-container {
+                gap: 0;
+            }
+            body {
+                background: white;
+                padding: 0;
+            }
+        }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="title-area">
-            <div class="title">${title}</div>
-        </div>
-        <div class="content-area">
+    <div class="pages-container">
 `;
+            
+            // Use the same pagination logic as the view's render method
+            let currentPageContent = '';
+            let titlePageHeight = 0;
+            let isFirstPage = true;
+            let titleHeightUsed = 0;
+            
+            // Start first page
+            html += '        <div class="page">\n';
+            html += '            <div class="page-content">\n';
+            
+            // Add title to first page if it exists
+            if (doc.title && doc.title.trim()) {
+                const titleHeight = view.measureTitleHeight();
+                if (titlePageHeight + titleHeight <= PAGE_CONFIG.HEIGHT) {
+                    html += '                <div class="title-area">\n';
+                    html += `                    <div class="title">${title}</div>\n`;
+                    html += '                </div>\n';
+                    titlePageHeight += titleHeight;
+                    titleHeightUsed = titleHeight;
+                }
+            }
+            
+            // Add editor area
+            html += '                <div class="editor-area">\n';
+            
+            // Build list of all chunks with their metadata (same as render method)
+            const allChunks = [];
             
             for (let groupIndex = 0; groupIndex < doc.streamGroups.length; groupIndex++) {
                 const group = doc.streamGroups[groupIndex];
                 
-                html += '            <div class="paragraph-group">\n';
-                
+                // Add paragraph break as a special chunk (except for first group)
                 if (groupIndex > 0) {
-                    html += '                <div class="paragraph-break">\n';
-                    html += '                    <span class="paragraph-break-symbol">§</span>\n';
-                    html += '                </div>\n';
+                    allChunks.push({
+                        type: 'paragraph-break',
+                        groupIndex,
+                        chunkIndex: -1,
+                        streamLines: null
+                    });
                 }
                 
                 const streamLines = group.map(stream => view.breakTextIntoLines(stream));
                 const maxChunks = Math.max(...streamLines.map(lines => lines.length));
                 
                 for (let chunkIndex = 0; chunkIndex < maxChunks; chunkIndex++) {
-                    html += '                <div class="stream-chunk">\n';
-                    for (let streamIndex = 0; streamIndex < doc.streamCount; streamIndex++) {
-                        const line = streamLines[streamIndex][chunkIndex] || '';
-                        if (line) {  // Export all content, including whitespace-only lines
-                            html += `                    <div class="stream stream-${streamIndex}">${line}</div>\n`;
-                        }
-                    }
-                    html += '                </div>\n';
+                    allChunks.push({
+                        type: 'content-chunk',
+                        groupIndex,
+                        chunkIndex,
+                        streamLines
+                    });
                 }
-                
-                html += '            </div>\n';
             }
             
-            html += `        </div>
-    </div>
+            // Process each chunk with pagination
+            let currentParagraphGroup = null;
+            let lastGroupIndex = -1;
+            let currentPageHeight = titleHeightUsed;
+            
+            for (let i = 0; i < allChunks.length; i++) {
+                const chunkData = allChunks[i];
+                
+                // Calculate height of this item
+                let itemHeight = 0;
+                if (chunkData.type === 'paragraph-break') {
+                    itemHeight = view.calculateParagraphBreakHeight();
+                } else if (chunkData.type === 'content-chunk') {
+                    itemHeight = view.calculateChunkHeight();
+                }
+                
+                // Check if we need a new page
+                if (currentPageHeight + itemHeight > view.USABLE_PAGE_HEIGHT && currentPageHeight > 0) {
+                    // Close current paragraph group if needed
+                    if (currentParagraphGroup !== null) {
+                        html += '                    </div>\n'; // close paragraph-group
+                    }
+                    
+                    // Close current page
+                    html += '                </div>\n'; // close editor-area
+                    html += '            </div>\n'; // close page-content
+                    html += '        </div>\n'; // close page
+                    
+                    // Start new page
+                    html += '        <div class="page">\n';
+                    html += '            <div class="page-content">\n';
+                    html += '                <div class="editor-area">\n';
+                    
+                    currentPageHeight = 0;
+                    currentParagraphGroup = null;
+                    lastGroupIndex = -1;
+                }
+                
+                if (chunkData.type === 'paragraph-break') {
+                    // Create standalone paragraph break
+                    html += '                    <div class="paragraph-break-header">\n';
+                    html += '                        <span class="paragraph-break-symbol">§</span>\n';
+                    html += '                    </div>\n';
+                    currentPageHeight += itemHeight;
+                    
+                } else if (chunkData.type === 'content-chunk') {
+                    // Create or reuse paragraph group
+                    if (chunkData.groupIndex !== lastGroupIndex) {
+                        if (currentParagraphGroup !== null) {
+                            html += '                    </div>\n'; // close previous paragraph-group
+                        }
+                        html += '                    <div class="paragraph-group">\n';
+                        currentParagraphGroup = chunkData.groupIndex;
+                        lastGroupIndex = chunkData.groupIndex;
+                    }
+                    
+                    // Create the chunk
+                    html += '                        <div class="stream-chunk">\n';
+                    
+                    for (let streamIndex = 0; streamIndex < doc.streamCount; streamIndex++) {
+                        const line = chunkData.streamLines[streamIndex][chunkData.chunkIndex] || '';
+                        html += `                            <div class="stream stream-${streamIndex}">${line}</div>\n`;
+                    }
+                    
+                    html += '                        </div>\n';
+                    currentPageHeight += itemHeight;
+                }
+            }
+            
+            // Close final paragraph group if needed
+            if (currentParagraphGroup !== null) {
+                html += '                    </div>\n'; // close final paragraph-group
+            }
+            
+            // Close final page
+            html += '                </div>\n'; // close editor-area
+            html += '            </div>\n'; // close page-content
+            html += '        </div>\n'; // close page
+            
+            html += `    </div>
 </body>
 </html>`;
             
@@ -1979,3 +2120,4 @@ version: "1.0"
     </script>
 </body>
 </html>
+
