@@ -327,6 +327,10 @@
             font-size: 16px;
             line-height: 1.6;
             white-space: nowrap;
+            padding: 0px 0px 0px 10px;
+            border-left: 3px solid rgba(233, 233, 233, 0.3);
+            margin-left: -10px;
+            box-sizing: border-box;
         }
     </style>
 </head>
@@ -486,7 +490,7 @@
                 };
                 
                 // Virtual chunking system for performance
-                this.virtualChunkSize = 160; // Maximum characters per virtual chunk
+                this.virtualChunkSize = 440; // Maximum characters per virtual chunk
                 this.virtualChunks = new Map(); // Key: "groupIndex-streamIndex", Value: array of chunks
                 
                 // Save initial state
@@ -781,28 +785,87 @@
                     return [text];
                 }
                 
+                // NEW APPROACH: Create line-aware virtual chunks
+                // Instead of breaking by character count, break by estimated lines
                 const chunks = [];
                 let currentPos = 0;
+                const targetLinesPerChunk = 8; // Process about 8 lines at a time
                 
                 while (currentPos < text.length) {
-                    let chunkEnd = Math.min(currentPos + this.virtualChunkSize, text.length);
+                    let chunkText = '';
+                    let linesInChunk = 0;
+                    let searchPos = currentPos;
                     
-                    // If we're not at the end of the text, try to find a good break point
-                    if (chunkEnd < text.length) {
-                        // Look backwards from the chunk end for a good break point
-                        let breakPoint = chunkEnd;
-                        for (let i = chunkEnd; i > currentPos + this.virtualChunkSize * 0.8; i--) {
-                            const char = text[i];
-                            if (char === ' ' || char === '\n' || char === '\t' || char === '.' || char === '!' || char === '?') {
-                                breakPoint = i + 1; // Include the break character
-                                break;
+                    // Build up chunk by simulating line breaking
+                    while (searchPos < text.length && linesInChunk < targetLinesPerChunk) {
+                        let currentLine = '';
+                        let lineStart = searchPos;
+                        
+                        // Simulate line breaking for this line
+                        while (searchPos < text.length) {
+                            const char = text[searchPos];
+                            const testLine = currentLine + char;
+                            
+                            // Use actual text measurement for accuracy
+                            const maxWidth = window.view?.maxLineWidth || 700;
+                            let fitsOnLine = true;
+                            
+                            // For performance, only measure width periodically or if getting close
+                            if (testLine.length > 50 && testLine.length % 10 === 0) {
+                                const actualWidth = window.view?.measureTextWidth(testLine) || testLine.length * 9.6;
+                                fitsOnLine = actualWidth <= maxWidth;
+                            } else {
+                                // Use fast estimation for most checks
+                                const estimatedWidth = testLine.length * 9.6;
+                                fitsOnLine = estimatedWidth <= maxWidth;
+                            }
+                            
+                            if (fitsOnLine) {
+                                currentLine = testLine;
+                                searchPos++;
+                            } else {
+                                // Line is too long, need to break
+                                if (currentLine === '') {
+                                    // Single character line, force it
+                                    currentLine = char;
+                                    searchPos++;
+                                } else {
+                                    // Try to break at a good point
+                                    let breakPoint = currentLine.length;
+                                    for (let j = currentLine.length - 1; j >= Math.max(0, currentLine.length - 20); j--) {
+                                        const c = currentLine[j];
+                                        if (c === ' ' || c === '\t' || c === '-' || c === '.' || c === ',') {
+                                            breakPoint = j + 1;
+                                            break;
+                                        }
+                                    }
+                                    
+                                    if (breakPoint < currentLine.length) {
+                                        currentLine = currentLine.substring(0, breakPoint);
+                                        searchPos = lineStart + breakPoint;
+                                    }
+                                }
+                                break; // End of this line
                             }
                         }
-                        chunkEnd = breakPoint;
+                        
+                        linesInChunk++;
+                        
+                        // Add this line to our chunk
+                        if (searchPos > currentPos) {
+                            chunkText += text.substring(lineStart, searchPos);
+                        }
                     }
                     
-                    chunks.push(text.substring(currentPos, chunkEnd));
-                    currentPos = chunkEnd;
+                    if (chunkText || searchPos > currentPos) {
+                        chunks.push(chunkText || text.substring(currentPos, searchPos));
+                    }
+                    currentPos = searchPos;
+                    
+                    // Safety valve - prevent infinite loops
+                    if (currentPos === searchPos && searchPos < text.length) {
+                        currentPos++;
+                    }
                 }
                 
                 return chunks;
