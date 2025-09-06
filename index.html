@@ -785,85 +785,42 @@
                     return [text];
                 }
                 
-                // NEW APPROACH: Create line-aware virtual chunks
-                // Instead of breaking by character count, break by estimated lines
+                // FIXED APPROACH: Simple character-based chunking without line breaking simulation
+                // Since CSS uses white-space: nowrap, we shouldn't simulate line breaks here
                 const chunks = [];
                 let currentPos = 0;
-                const targetLinesPerChunk = 8; // Process about 8 lines at a time
                 
                 while (currentPos < text.length) {
-                    let chunkText = '';
-                    let linesInChunk = 0;
-                    let searchPos = currentPos;
+                    const remainingLength = text.length - currentPos;
+                    const chunkSize = Math.min(this.virtualChunkSize, remainingLength);
                     
-                    // Build up chunk by simulating line breaking
-                    while (searchPos < text.length && linesInChunk < targetLinesPerChunk) {
-                        let currentLine = '';
-                        let lineStart = searchPos;
-                        
-                        // Simulate line breaking for this line
-                        while (searchPos < text.length) {
-                            const char = text[searchPos];
-                            const testLine = currentLine + char;
-                            
-                            // Use actual text measurement for accuracy
-                            const maxWidth = window.view?.maxLineWidth || 700;
-                            let fitsOnLine = true;
-                            
-                            // For performance, only measure width periodically or if getting close
-                            if (testLine.length > 50 && testLine.length % 10 === 0) {
-                                const actualWidth = window.view?.measureTextWidth(testLine) || testLine.length * 9.6;
-                                fitsOnLine = actualWidth <= maxWidth;
-                            } else {
-                                // Use fast estimation for most checks
-                                const estimatedWidth = testLine.length * 9.6;
-                                fitsOnLine = estimatedWidth <= maxWidth;
-                            }
-                            
-                            if (fitsOnLine) {
-                                currentLine = testLine;
-                                searchPos++;
-                            } else {
-                                // Line is too long, need to break
-                                if (currentLine === '') {
-                                    // Single character line, force it
-                                    currentLine = char;
-                                    searchPos++;
-                                } else {
-                                    // Try to break at a good point
-                                    let breakPoint = currentLine.length;
-                                    for (let j = currentLine.length - 1; j >= Math.max(0, currentLine.length - 20); j--) {
-                                        const c = currentLine[j];
-                                        if (c === ' ' || c === '\t' || c === '-' || c === '.' || c === ',') {
-                                            breakPoint = j + 1;
-                                            break;
-                                        }
-                                    }
-                                    
-                                    if (breakPoint < currentLine.length) {
-                                        currentLine = currentLine.substring(0, breakPoint);
-                                        searchPos = lineStart + breakPoint;
-                                    }
-                                }
-                                break; // End of this line
+                    // Extract chunk without trying to break at "line" boundaries
+                    let endPos = currentPos + chunkSize;
+                    
+                    // If we're not at the end of the text, try to break at a word boundary
+                    if (endPos < text.length) {
+                        // Look backwards up to 50 characters for a good break point
+                        let breakPoint = endPos;
+                        for (let j = endPos; j >= Math.max(currentPos, endPos - 50); j--) {
+                            const c = text[j];
+                            if (c === ' ' || c === '\t' || c === '\n') {
+                                breakPoint = j;
+                                break;
                             }
                         }
-                        
-                        linesInChunk++;
-                        
-                        // Add this line to our chunk
-                        if (searchPos > currentPos) {
-                            chunkText += text.substring(lineStart, searchPos);
-                        }
+                        endPos = breakPoint;
                     }
                     
-                    if (chunkText || searchPos > currentPos) {
-                        chunks.push(chunkText || text.substring(currentPos, searchPos));
+                    // Extract the chunk
+                    const chunk = text.substring(currentPos, endPos);
+                    if (chunk.length > 0) {
+                        chunks.push(chunk);
                     }
-                    currentPos = searchPos;
                     
-                    // Safety valve - prevent infinite loops
-                    if (currentPos === searchPos && searchPos < text.length) {
+                    currentPos = endPos;
+                    
+                    // Skip any whitespace at the beginning of the next chunk
+                    while (currentPos < text.length && (text[currentPos] === ' ' || text[currentPos] === '\t')) {
                         currentPos++;
                     }
                 }
@@ -1238,26 +1195,11 @@ version: "1.0"
                     return [...cacheEntry.lines]; // Return copy to prevent mutations
                 }
                 
-                // For very long text, use virtual chunking for better performance
-                if (this.document.shouldUseVirtualChunking(text)) {
-                    const virtualChunks = this.document.createVirtualChunks(text);
-                    const allLines = [];
-                    
-                    // Process each virtual chunk separately (much faster)
-                    for (const chunk of virtualChunks) {
-                        const chunkLines = this.computeTextLines(chunk);
-                        allLines.push(...chunkLines);
-                    }
-                    
-                    // Cache the final result
-                    this.cacheLines(text, allLines);
-                    return allLines;
-                } else {
-                    // For shorter text, use original method
-                    const lines = this.computeTextLines(text);
-                    this.cacheLines(text, lines);
-                    return lines;
-                }
+                // Always use the original method for line breaking to avoid visual artifacts
+                // Virtual chunking should not affect the visual line breaking behavior
+                const lines = this.computeTextLines(text);
+                this.cacheLines(text, lines);
+                return lines;
             }
             
             breakTextIntoLinesOptimized(text, streamIndex, groupIndex) {
@@ -1271,9 +1213,8 @@ version: "1.0"
                 }
                 
                 // Large change or no cache - compute fresh lines
-                const lines = this.document.shouldUseVirtualChunking(text) 
-                    ? this.computeVirtualChunkedLines(text)
-                    : this.computeTextLines(text);
+                // Always use direct computation to avoid virtual chunking artifacts
+                const lines = this.computeTextLines(text);
                 
                 // Update stream cache
                 this.streamLineCache.set(cacheKey, {
@@ -1301,9 +1242,8 @@ version: "1.0"
                 // For medium changes, do minimal recomputation
                 if (lengthDiff <= 10) {
                     // Only recompute if we really need to
-                    const lines = this.document.shouldUseVirtualChunking(newText)
-                        ? this.computeVirtualChunkedLines(newText)
-                        : this.computeTextLines(newText);
+                    // Always use direct computation to avoid virtual chunking artifacts
+                    const lines = this.computeTextLines(newText);
                     
                     // Update cache
                     this.streamLineCache.set(cacheKey, {
@@ -1323,6 +1263,7 @@ version: "1.0"
                 const virtualChunks = this.document.createVirtualChunks(text);
                 const allLines = [];
                 
+                // Process each virtual chunk separately and combine the results
                 for (const chunk of virtualChunks) {
                     const chunkLines = this.computeTextLines(chunk);
                     allLines.push(...chunkLines);
