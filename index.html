@@ -1998,7 +1998,8 @@ version: "1.0"
         const doc = new MultiStreamDocument(3);
         const view = new MultiStreamView(document.getElementById('pagesContainer'), doc);
         
-        // Make view available globally for document model to use
+        // Make both doc and view available globally
+        window.doc = doc;
         window.view = view;
         
         // Force initial render to ensure DOM structure exists
@@ -2177,6 +2178,14 @@ version: "1.0"
                     }
                     return newGroup;
                 });
+                
+                // Clear caches that depend on stream structure
+                doc.clearVirtualChunks();
+                view.rebuildCaches();
+                
+                // Force a full rebuild since stream structure changed
+                doc.changeTracker.structureChanged = true;
+                doc.changeTracker.fullRebuildNeeded = true;
                 
                 document.getElementById('streamCount').textContent = newCount;
                 view.render();
