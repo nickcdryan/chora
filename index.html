@@ -506,8 +506,8 @@
                     this.saveStateDebounced();
                     this.autoSaveDebounced();
                     
-                    // Update virtual chunks for this stream
-                    this.updateVirtualChunks(streamIndex, group, text);
+                    // Disable virtual chunks update to fix editing issues
+                    // this.updateVirtualChunks(streamIndex, group, text);
                     
                     // Check if we should use virtual chunking for change detection
                     if (this.shouldUseVirtualChunking(text) || this.shouldUseVirtualChunking(oldText)) {
@@ -777,7 +777,7 @@
             
             // Virtual chunking methods for performance optimization
             shouldUseVirtualChunking(text) {
-                return text && text.length > this.virtualChunkSize;
+                return false; // Disabled to fix text editing issues
             }
             
             createVirtualChunks(text) {
@@ -1184,21 +1184,21 @@ version: "1.0"
             breakTextIntoLines(text, streamIndex = null, groupIndex = null) {
                 if (!text) return [''];
                 
-                // If we have stream context, try stream-based cache first
-                if (streamIndex !== null && groupIndex !== null) {
-                    return this.breakTextIntoLinesOptimized(text, streamIndex, groupIndex);
-                }
+                // Disable optimized line breaking to fix text editing issues
+                // if (streamIndex !== null && groupIndex !== null) {
+                //     return this.breakTextIntoLinesOptimized(text, streamIndex, groupIndex);
+                // }
                 
-                // Check full-text cache
-                const cacheEntry = this.lineBreakingCache.get(text);
-                if (cacheEntry) {
-                    return [...cacheEntry.lines]; // Return copy to prevent mutations
-                }
+                // Disable full-text cache to fix text editing issues
+                // const cacheEntry = this.lineBreakingCache.get(text);
+                // if (cacheEntry) {
+                //     return [...cacheEntry.lines]; // Return copy to prevent mutations
+                // }
                 
                 // Always use the original method for line breaking to avoid visual artifacts
                 // Virtual chunking should not affect the visual line breaking behavior
                 const lines = this.computeTextLines(text);
-                this.cacheLines(text, lines);
+                // this.cacheLines(text, lines); // Disabled caching
                 return lines;
             }
             
@@ -1611,8 +1611,8 @@ version: "1.0"
                     return;
                 }
                 
-                // Update cache with current text
-                this.updateTextCache(streamIndex, groupIndex, currentText);
+                // Disable text caching to fix editing issues  
+                // this.updateTextCache(streamIndex, groupIndex, currentText);
                 
                 // Update each chunk with its corresponding line
                 streamElements.forEach((element, index) => {
@@ -1767,7 +1767,7 @@ version: "1.0"
                     stream.dataset.placeholder = 'Start writing...';
                 }
                 
-                stream.addEventListener('input', (e) => this.handleInputOptimized(e, streamIndex, groupIndex, chunkIndex));
+                stream.addEventListener('input', (e) => this.handleInput(e, streamIndex, groupIndex));
                 stream.addEventListener('keydown', (e) => this.handleKeyDown(e, streamIndex, chunkIndex, groupIndex));
                 stream.addEventListener('focus', (e) => {
                     lastFocusedElement = e.target;
@@ -1797,58 +1797,26 @@ version: "1.0"
                 let fullText = '';
                 let absolutePosition = 0;
                 
-                // Check if we have cached text
-                const cachedText = this.getCachedText(streamIndex, groupIndex);
-                if (cachedText !== undefined && cachedText !== '') {
-                    // Super fast path: Get cached line breaking results
-                    const cacheEntry = this.lineBreakingCache.get(cachedText);
-                    if (cacheEntry) {
-                        // Use cached line breakdown - no expensive recalculation!
-                        const lines = [...cacheEntry.lines]; // Copy to prevent mutation
-                        
-                        // Replace the changed line with current element content
-                        lines[chunkIndexNum] = element.textContent;
-                        fullText = lines.join('');
-                        
-                        // Fast cursor position calculation using cached lines
-                        for (let i = 0; i < chunkIndexNum; i++) {
-                            absolutePosition += (lines[i] || '').length;
-                        }
-                        absolutePosition += cursorPos;
-                    } else {
-                        // Cache miss - use optimized line breaking with stream context
-                        const lines = this.breakTextIntoLines(cachedText, streamIndex, groupIndex);
-                        lines[chunkIndexNum] = element.textContent;
-                        fullText = lines.join('');
-                        
-                        // Calculate cursor position
-                        for (let i = 0; i < chunkIndexNum; i++) {
-                            absolutePosition += (lines[i] || '').length;
-                        }
-                        absolutePosition += cursorPos;
-                    }
-                } else {
-                    // Fallback to original DOM reconstruction
-                    this.rebuildCaches();
-                    const pagesContainer = document.getElementById('pagesContainer');
-                    const chunks = Array.from(pagesContainer.querySelectorAll(
-                        `[data-stream-index="${streamIndex}"][data-group-index="${groupIndex}"]`
-                    ));
-                    
-                    // Calculate absolute cursor position
-                    for (let i = 0; i < chunkIndexNum; i++) {
-                        if (chunks[i]) {
-                            absolutePosition += chunks[i].textContent.length;
-                        }
-                    }
-                    absolutePosition += cursorPos;
-                    
-                    // Get full text for this stream in this group
-                    fullText = chunks.map(chunk => chunk.textContent).join('');
-                }
+                // Always use DOM reconstruction for input to preserve exact text content
+                // Cached line reconstruction loses spaces when lines.join('') is used
+                const pagesContainer = document.getElementById('pagesContainer');
+                const chunks = Array.from(pagesContainer.querySelectorAll(
+                    `[data-stream-index="${streamIndex}"][data-group-index="${groupIndex}"]`
+                ));
                 
-                // Update cache with new text
-                this.updateTextCache(streamIndex, groupIndex, fullText);
+                // Calculate absolute cursor position
+                for (let i = 0; i < chunkIndexNum; i++) {
+                    if (chunks[i]) {
+                        absolutePosition += chunks[i].textContent.length;
+                    }
+                }
+                absolutePosition += cursorPos;
+                
+                // Get full text for this stream in this group
+                fullText = chunks.map(chunk => chunk.textContent).join('');
+                
+                // Disable text caching to fix editing issues
+                // this.updateTextCache(streamIndex, groupIndex, fullText);
                 
                 // Update document
                 this.document.setStreamText(streamIndex, fullText, absolutePosition, groupIndex);
