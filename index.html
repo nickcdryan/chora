@@ -1004,8 +1004,14 @@ version: "1.0"
                             
                             // If we found a good break point, use it
                             if (breakPoint < currentLine.length) {
-                                lines.push(currentLine.substring(0, breakPoint));
-                                currentLine = currentLine.substring(breakPoint);
+                                const beforeBreak = currentLine.substring(0, breakPoint);
+                                let afterBreak = currentLine.substring(breakPoint);
+                                
+                                // Don't strip any spaces - they're part of the actual text
+                                // Just use afterBreak as-is
+                                
+                                lines.push(beforeBreak);
+                                currentLine = afterBreak;
                             } else {
                                 // No good break point found, break at current position
                                 lines.push(currentLine);
@@ -1265,53 +1271,122 @@ version: "1.0"
             createStream(streamIndex, chunkIndex, text, groupIndex) {
                 const stream = document.createElement('div');
                 stream.className = `stream stream-${streamIndex}`;
-                stream.contentEditable = true;
                 stream.dataset.streamIndex = streamIndex;
                 stream.dataset.chunkIndex = chunkIndex;
                 stream.dataset.groupIndex = groupIndex;
                 stream.textContent = text;
+                stream.style.cursor = 'text';
+                stream.style.minHeight = '1.6em'; // Ensure clickable area
                 
                 if (streamIndex === 0 && chunkIndex === 0 && groupIndex === 0 && !text) {
                     stream.dataset.placeholder = 'Start writing...';
                 }
                 
-                stream.addEventListener('input', (e) => this.handleInput(e, streamIndex, groupIndex));
-                stream.addEventListener('keydown', (e) => this.handleKeyDown(e, streamIndex, chunkIndex, groupIndex));
-                stream.addEventListener('focus', (e) => {
-                    lastFocusedElement = e.target;
+                // Make it clickable to start editing
+                stream.addEventListener('click', (e) => {
+                    this.startInlineEditing(streamIndex, chunkIndex, groupIndex, e);
                 });
                 
                 return stream;
             }
             
-            handleInput(event, streamIndex, groupIndex) {
-                if (this.isUpdating) return;
+            startInlineEditing(streamIndex, chunkIndex, groupIndex, event) {
+                // Prevent multiple editors
+                if (document.querySelector('.inline-editor')) return;
                 
-                const element = event.target;
-                const cursorPos = this.getCursorPosition(element);
-                const chunkIndex = parseInt(element.dataset.chunkIndex);
+                const clickedElement = event.target;
+                const fullText = this.document.streamGroups[groupIndex][streamIndex];
                 
-                // Reconstruct the full text for this stream in this group
-                // Search across all pages
-                const pagesContainer = document.getElementById('pagesContainer');
-                const chunks = Array.from(pagesContainer.querySelectorAll(
-                    `[data-stream-index="${streamIndex}"][data-group-index="${groupIndex}"]`
-                ));
-                let absolutePosition = 0;
+                // Create textarea that perfectly overlays the clicked element
+                const textarea = document.createElement('textarea');
+                textarea.className = 'inline-editor';
+                textarea.value = fullText;
                 
-                // Calculate absolute cursor position
+                // Match the exact styling of the chunk
+                const computedStyle = window.getComputedStyle(clickedElement);
+                textarea.style.position = 'absolute';
+                textarea.style.fontFamily = computedStyle.fontFamily;
+                textarea.style.fontSize = computedStyle.fontSize;
+                textarea.style.lineHeight = computedStyle.lineHeight;
+                textarea.style.color = computedStyle.color;
+                textarea.style.backgroundColor = computedStyle.backgroundColor;
+                textarea.style.border = '2px solid #3498db';
+                textarea.style.borderRadius = '4px';
+                textarea.style.padding = computedStyle.padding;
+                textarea.style.margin = '0';
+                textarea.style.resize = 'none';
+                textarea.style.outline = 'none';
+                textarea.style.zIndex = '1000';
+                textarea.style.width = clickedElement.offsetWidth + 'px';
+                textarea.style.minHeight = clickedElement.offsetHeight + 'px';
+                
+                // Position exactly over the clicked element
+                const rect = clickedElement.getBoundingClientRect();
+                const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
+                const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                textarea.style.left = (rect.left + scrollLeft - 2) + 'px'; // Account for border
+                textarea.style.top = (rect.top + scrollTop - 2) + 'px';
+                
+                // Hide the original element
+                clickedElement.style.opacity = '0.1';
+                
+                // Calculate initial cursor position
+                const lines = this.breakTextIntoLines(fullText);
+                let cursorPos = 0;
                 for (let i = 0; i < chunkIndex; i++) {
-                    if (chunks[i]) {
-                        absolutePosition += chunks[i].textContent.length;
-                    }
+                    cursorPos += (lines[i] || '').length;
                 }
-                absolutePosition += cursorPos;
                 
-                // Get full text for this stream in this group
-                const fullText = chunks.map(chunk => chunk.textContent).join('');
+                document.body.appendChild(textarea);
+                textarea.focus();
+                textarea.setSelectionRange(cursorPos, cursorPos);
                 
-                // Update document
-                this.document.setStreamText(streamIndex, fullText, absolutePosition, groupIndex);
+                // Handle input changes
+                const handleInput = () => {
+                    this.document.setStreamText(streamIndex, textarea.value, 
+                                               textarea.selectionStart, groupIndex);
+                };
+                
+                textarea.addEventListener('input', handleInput);
+                
+                // Handle keyboard shortcuts
+                textarea.addEventListener('keydown', (e) => {
+                    if (e.key === 'Tab') {
+                        e.preventDefault();
+                        if (e.shiftKey) {
+                            // Switch streams
+                            const nextStreamIndex = (streamIndex + 1) % this.document.streamCount;
+                            cleanup();
+                            setTimeout(() => {
+                                const nextElement = document.querySelector(
+                                    `[data-stream-index="${nextStreamIndex}"][data-chunk-index="${chunkIndex}"][data-group-index="${groupIndex}"]`
+                                );
+                                if (nextElement) nextElement.click();
+                            }, 10);
+                        } else {
+                            // Insert spaces
+                            const start = textarea.selectionStart;
+                            const end = textarea.selectionEnd;
+                            const spaces = '    ';
+                            textarea.value = textarea.value.substring(0, start) + spaces + textarea.value.substring(end);
+                            textarea.setSelectionRange(start + spaces.length, start + spaces.length);
+                            handleInput();
+                        }
+                    } else if (e.key === 'Escape') {
+                        cleanup();
+                    }
+                });
+                
+                // Cleanup function
+                const cleanup = () => {
+                    textarea.removeEventListener('input', handleInput);
+                    clickedElement.style.opacity = '';
+                    if (document.body.contains(textarea)) {
+                        document.body.removeChild(textarea);
+                    }
+                };
+                
+                textarea.addEventListener('blur', cleanup);
             }
             
             handleKeyDown(event, streamIndex, chunkIndex, groupIndex) {
@@ -1329,8 +1404,8 @@ version: "1.0"
                             nextElement.focus();
                         }
                     } else {
-                        // Regular Tab: insert 4 spaces using execCommand for simplicity
-                        document.execCommand('insertText', false, '            ');
+                        // Regular Tab: insert 4 spaces using execCommand
+                        document.execCommand('insertText', false, '    ');
                     }
                 } else if (event.key === 'Enter') {
                     event.preventDefault();
@@ -1338,7 +1413,6 @@ version: "1.0"
                     if (event.shiftKey) {
                         // Shift+Enter: move to previous chunk in the same stream
                         let prevElement = null;
-                        
                         const pagesContainer = document.getElementById('pagesContainer');
                         
                         if (chunkIndex > 0) {
@@ -1351,11 +1425,9 @@ version: "1.0"
                             // If at chunk 0, try to find the last chunk of the same stream in the previous group
                             const prevGroupIndex = groupIndex - 1;
                             if (prevGroupIndex >= 0) {
-                                // Find all chunks in the previous group for this stream
                                 const prevGroupChunks = pagesContainer.querySelectorAll(
                                     `[data-stream-index="${streamIndex}"][data-group-index="${prevGroupIndex}"]`
                                 );
-                                // Get the last chunk (highest chunk index)
                                 if (prevGroupChunks.length > 0) {
                                     prevElement = prevGroupChunks[prevGroupChunks.length - 1];
                                 }
@@ -1364,7 +1436,6 @@ version: "1.0"
                         
                         if (prevElement) {
                             prevElement.focus();
-                            // Position cursor at the beginning of the previous chunk
                             this.setCursor(prevElement, 0);
                         }
                     } else {
@@ -1373,12 +1444,10 @@ version: "1.0"
                         let nextElement = null;
                         const pagesContainer = document.getElementById('pagesContainer');
                         
-                        // First try to find next chunk in the same group
                         nextElement = pagesContainer.querySelector(
                             `[data-stream-index="${streamIndex}"][data-chunk-index="${nextChunkIndex}"][data-group-index="${groupIndex}"]`
                         );
                         
-                        // If not found in current group, try next group at chunk 0
                         if (!nextElement) {
                             const nextGroupIndex = groupIndex + 1;
                             nextElement = pagesContainer.querySelector(
@@ -1388,7 +1457,6 @@ version: "1.0"
                         
                         if (nextElement) {
                             nextElement.focus();
-                            // Position cursor at the beginning of the next chunk
                             this.setCursor(nextElement, 0);
                         }
                     }
