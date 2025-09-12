@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A New Life</title>
+    <style>
+        body {
+            font-family: Georgia, serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+            line-height: 1.6;
+        }
+        
+        .pages-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 30px;
+            padding: 20px 0;
+        }
+        
+        .page {
+            max-width: 900px;
+            width: 100%;
+            background: white;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            position: relative;
+            padding: 0;
+            overflow: visible;
+            min-height: 1400px;
+        }
+        
+        .page-content {
+            min-height: 100%;
+            overflow: visible;
+            position: relative;
+            box-sizing: border-box;
+            padding: 60px 80px 10px 80px;
+        }
+        
+        .title-area {
+            padding: 20px 20px 40px 20px;
+        }
+        
+        .title {
+            font-family: Georgia, serif;
+            font-size: 28px;
+            font-weight: bold;
+            text-align: center;
+            color: #2c3e50;
+            padding: 20px 0;
+        }
+        
+        .editor-area {
+            min-height: 200px;
+            padding: 0;
+            margin: 20px 0 0 0;
+        }
+        
+        .paragraph-group {
+            position: relative;
+        }
+        
+        .paragraph-break-header {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 60px 0 40px 0;
+            padding: 20px;
+        }
+        
+        .paragraph-break-symbol {
+            font-size: 24px;
+            color: #adb5bd;
+            font-family: Georgia, serif;
+        }
+        
+        .stream-chunk {
+            position: relative;
+            margin-bottom: 75px;
+        }
+        
+        .stream {
+            min-height: 30px;
+            padding: 0px 0px 0px 0px;
+            margin-bottom: -4px;
+            font-family: Georgia, serif;
+            font-size: 16px; 
+            line-height: 1.6;
+            background: transparent;
+            white-space: nowrap;
+            width: 100%;
+            color: black;
+            font-style: normal;
+        }
+        
+        .stream-0, .stream-1, .stream-2, .stream-3, .stream-4 { 
+            color: black; 
+            font-style: normal;
+        }
+        
+        @media print {
+            .page {
+                page-break-after: always;
+                box-shadow: none;
+                margin: 0;
+                height: 1400px;
+                overflow: hidden;
+            }
+            .page-content {
+                height: 100%;
+                overflow: hidden;
+            }
+            .pages-container {
+                gap: 0;
+            }
+            body {
+                background: white;
+                padding: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="pages-container">
+        <div class="page">
+            <div class="page-content">
+                <div class="title-area">
+                    <div class="title">A New Life</div>
+                </div>
+                <div class="editor-area">
+                    <div class="paragraph-group">
+                        <div class="stream-chunk">
+                            <div class="stream stream-0">            hard light            morning light                                 birds, of course                                                            </div>
+                            <div class="stream stream-1">John is waiting in the park.             How long had it been? 12? years.     She wore a red sweater.                  </div>
+                            <div class="stream stream-2">                                                                                                            could use a coffee                                                </div>
+                        </div>
+                        <div class="stream-chunk">
+                            <div class="stream stream-0"> a red sweater, then nothing                                                             probably           unrecognizable, 12 years    </div>
+                            <div class="stream stream-1">                  Is that her? He realized, suddenly, that 12 years                       god, 12 years                                    </div>
+                            <div class="stream stream-2"> a family parting        a woman appears                                    red?                                                                          </div>
+                        </div>
+                        <div class="stream-chunk">
+                            <div class="stream stream-0">                                                                                                                                                          his hands,             </div>
+                            <div class="stream stream-1">she would probably be unrecognizable.             The woman smiles, her mouth opens and she's looking    </div>
+                            <div class="stream stream-2">                                          what does she even look like?                                                                                            </div>
+                        </div>
+                        <div class="stream-chunk">
+                            <div class="stream stream-0">unthinking                      pressed his lapels down unconsciously                                John!                                  </div>
+                            <div class="stream stream-1">                      John smiles her smile back                                               there's no time       a spicy smell, wool  </div>
+                            <div class="stream stream-2">     it is her                        god it is her     how, how? could I not recognize her                                                      </div>
+                        </div>
+                        <div class="stream-chunk">
+                            <div class="stream stream-0">Beth! he says, saying her name, a name he has not said out loud for 12 years    spice, and a red sweater  </div>
+                            <div class="stream stream-1">                                                                                                                                   12 years                                    </div>
+                            <div class="stream stream-2">       a hug is here               she grips    it is a hug that means something.              12 years                                  </div>
+                        </div>
+                        <div class="stream-chunk">
+                            <div class="stream stream-0">                                              You've gotten....fat!                         And old, of course                                                </div>
+                            <div class="stream stream-1">there is intimacy in the hug, complete warmth                                                     she's funny                              </div>
+                            <div class="stream stream-2">                                                                                   well, 12 years                                    how did I forget                </div>
+                        </div>
+                        <div class="stream-chunk">
+                            <div class="stream stream-0">You look great.             And I mean it.                                                                                                                          </div>
+                            <div class="stream stream-1">      And it's hard to do anything but smile.       and it's true                                                                                    </div>
+                            <div class="stream stream-2">                                                                                                            and John is disarmed, utterly disarmed. </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="page">
+            <div class="page-content">
+                <div class="editor-area">
+                    <div class="paragraph-group">
+                        <div class="stream-chunk">
+                            <div class="stream stream-0">                                                                                                                                           vaguely,                                  </div>
+                            <div class="stream stream-1">                                                                                                                                       except nerves                            </div>
+                            <div class="stream stream-2">The hug is warmth. She was glad to see him and he hadn't thought anything until she was there, in </div>
+                        </div>
+                        <div class="stream-chunk">
+                            <div class="stream stream-0">                                                                                                  Well! Coffee?                                                                  </div>
+                            <div class="stream stream-1">                                            Speak to me, John. Say something!            Absolutely                                                  </div>
+                            <div class="stream stream-2">front of him now smiling.                                                                                                                                          </div>
+                        </div>
+                        <div class="stream-chunk">
+                            <div class="stream stream-0">                  Shall we?            We shall.                                                                                                                            </div>
+                            <div class="stream stream-1">                                                                                                                                                                                            </div>
+                            <div class="stream stream-2">without missing a beat, and John points, smiling, behind her where the coffee cart lies behind the hill.  </div>
+                        </div>
+                        <div class="stream-chunk">
+                            <div class="stream stream-0">                                                                                                        oh             nothing much                                          </div>
+                            <div class="stream stream-1">  who are you now?     they wonder of one another, and she explains                                                                  </div>
+                            <div class="stream stream-2">                                                                                                          four years in London, four years in Boston, </div>
+                        </div>
+                        <div class="stream-chunk">
+                            <div class="stream stream-0">                                                                 really?                                                                        he remembers              </div>
+                            <div class="stream stream-1">                           John sips, listening            she always did most of the talking,                                                    </div>
+                            <div class="stream stream-2">and New York        ever since then New York, here, armslength.                                                                          </div>
+                        </div>
+                        <div class="stream-chunk">
+                            <div class="stream stream-0">                                              her voice is unbearably clear, the only sound in the air                                            </div>
+                            <div class="stream stream-1">she speaks, regales him                                    12 years   nothing             his hands  softly swaying                    </div>
+                            <div class="stream stream-2">                     opening her purse, pulling out something, putting it away                        she shakes her hair    </div>
+                        </div>
+                        <div class="stream-chunk">
+                            <div class="stream stream-0">and the overwhelming impression he has after all these years is that he has made a mistake:                      </div>
+                            <div class="stream stream-1">                                                                                           12 years                       a new life                                          </div>
+                            <div class="stream stream-2">               backstage, he thinks to himself                                                               incredibly mistaken                  </div>
+                        </div>
+                        <div class="stream-chunk">
+                            <div class="stream stream-0">  he should never have let her go. He is alarmed how quickly this has happened, yes, a new life, yes          </div>
+                            <div class="stream stream-1">     the thought,    swiftly        a new life                        a new beginning yes                                                          </div>
+                            <div class="stream stream-2">                              yes                                    yes                                                            how he could ask her            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="page">
+            <div class="page-content">
+                <div class="editor-area">
+                    <div class="paragraph-group">
+                        <div class="stream-chunk">
+                            <div class="stream stream-0">  come to the park,      yes                        a new life breathing in him                        she shakes her hair          </div>
+                            <div class="stream stream-1">      yes                        come to lunch         to dinner again, again, forever       yes, a new life            yes            </div>
+                            <div class="stream stream-2"> come see me, come to dinner      to breakfast      upstate                                                yes                                  </div>
+                        </div>
+                        <div class="stream-chunk">
+                            <div class="stream stream-0">              to coffee            cream? sugar?    yes                        a new life yes             yes yes            yes.</div>
+                            <div class="stream stream-1"> yes            her shaking hair,    his softly falling hands            yes       a new life            yes             anew.</div>
+                            <div class="stream stream-2">  there was a new     yes            life                I've got it            yes            yes            yes to begin yes.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
